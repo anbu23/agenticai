@@ -1,0 +1,1032 @@
+implement trip_agents.py and trip_orchestrator.py with format given below also shared other python files used in trip_agents.py
+*******************trip_agents.py starts here
+from crewai import Agent
+from crewai.tools import tool, BaseTool
+from langchain_openai import ChatOpenAI
+from typing import Dict, Any, Optional
+
+# Import tools
+from toolkits.web_search_service import WebSearchService
+from toolkits.weather_tool import WeatherTool
+from toolkits.amadeus_hotel_search import AmadeusHotelToolkit
+from toolkits.amadeus_flight_tool import AmadeusFlightToolkit
+from toolkits.amadeus_experience_tool import AmadeusExperienceToolkit
+from toolkits.current_datetime import DateTimeTool
+from api.datamodels import TripRequirements, TravelPlan, OptimizationResult
+
+
+"""
+Phase 2: CrewAI Agents - Starter Template
+"""
+
+
+# --- Placeholders for CrewAI tools and agents ---
+
+# Example tool class placeholder
+
+class SearchWebTool:
+    """
+    Tool to search the web for travel information.
+    Args:
+        query (str): The search query string.
+    Returns:
+        Any: Search results (to be defined by learner).
+    TODO: Implement logic to call a real or mock web search API.
+    """
+    def _run(self, query):
+        # TODO: Implement web search logic
+        pass
+
+
+class GetWeatherTool:
+    """
+    Tool to get weather forecast for a city and date range.
+    Args:
+        city (str): City name.
+        start_date (str): Start date (YYYY-MM-DD).
+        end_date (str): End date (YYYY-MM-DD).
+    Returns:
+        Any: Weather forecast data (to be defined by learner).
+    TODO: Implement logic to call a real or mock weather API.
+    """
+    def _run(self, city, start_date, end_date):
+        # TODO: Implement weather lookup logic
+        pass
+
+
+class SearchHotelsTool:
+    """
+    Tool to search for hotels in a city.
+    Args:
+        city (str): City name.
+        checkin (str): Check-in date (YYYY-MM-DD).
+        checkout (str): Check-out date (YYYY-MM-DD).
+        adults (int): Number of adults.
+    Returns:
+        Any: Hotel search results (to be defined by learner).
+    TODO: Implement logic to call a real or mock hotel API.
+    """
+    def _run(self, city, checkin, checkout, adults=1):
+        # TODO: Implement hotel search logic
+        pass
+
+
+class SearchFlightsTool:
+    """
+    Tool to search for flights between cities.
+    Args:
+        origin (str): Origin city.
+        destination (str): Destination city.
+        departure_date (str): Departure date (YYYY-MM-DD).
+        return_date (str, optional): Return date (YYYY-MM-DD).
+    Returns:
+        Any: Flight search results (to be defined by learner).
+    TODO: Implement logic to call a real or mock flight API.
+    """
+    def _run(self, origin, destination, departure_date, return_date=None):
+        # TODO: Implement flight search logic
+        pass
+
+
+class GetCurrentDateTool:
+    """
+    Tool to get today's date.
+    Returns:
+        str: Current date in YYYY-MM-DD format.
+    TODO: Implement logic to return the current date.
+    """
+    def _run(self):
+        # TODO: Implement current date logic
+        pass
+
+# Example agent placeholders
+
+def info_collector():
+    """
+    Agent to extract trip requirements from user input.
+    Args:
+        user_input (str): The user's natural language trip request.
+    Returns:
+        TripRequirements: Structured requirements (see db/datamodels.py).
+    TODO: Implement logic to parse and validate user input.
+    """
+    pass
+
+def planner():
+    """Agent to create a travel plan using real data (implement logic)."""
+    pass
+
+def optimizer():
+    """Agent to optimize travel plan for cost and value (implement logic)."""
+    pass
+*******************trip_agents.py ends here 
+
+*******************trip_orchestrator.py - CrewAI orchestration logic - starts here
+# Disable telemetry FIRST - before any other imports
+import os
+os.environ["CREWAI_TELEMETRY"] = "false"
+os.environ["OTEL_SDK_DISABLED"] = "true"
+
+# Suppress warnings
+import warnings
+warnings.filterwarnings("ignore")
+
+import time
+import json
+from datetime import datetime, date
+from typing import Dict, Any, Optional, List
+from pydantic import ValidationError
+
+# Custom JSON encoder for date objects
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        return super().default(o)
+
+# CrewAI imports
+from crewai import Crew, Task, Process
+
+# Local imports
+import db.db_utils as db_utils
+from api.datamodels import TripRequirements, Trip, TravelPlan, OptimizationResult, ChatHistory
+from db.db_utils import save_chat_message
+from phases.phase2_crewai.trip_agents import (
+    info_collector, planner, optimizer
+)
+
+
+class CrewAITripOrchestrator:
+    """
+    Orchestrator for Phase 2: CrewAI Sequential Agent Workflow.
+    - Calls InfoCollector, Planner, and Optimizer agents in sequence.
+    - Handles missing information and loops back to user if needed.
+    - Ensures all outputs conform to Pydantic models in db/datamodels.py.
+    TODO: Implement the full workflow as described in the lab manual.
+    """
+    def __init__(self):
+        # TODO: Initialize orchestrator state
+        pass
+
+    def plan_trip(self, user_input, user_id, trip_title="My Trip", approval_callback=None, conversation_history=None):
+        """
+        Plan a trip based on user input.
+        Args:
+            user_input (str): User's trip request.
+            user_id (int): User ID.
+            trip_title (str): Title for the trip.
+            approval_callback (callable, optional): Callback for approval step.
+            conversation_history (list, optional): Previous chat history.
+        Returns:
+            dict: Result dictionary matching UI and data model expectations.
+        TODO: Implement trip planning logic as per lab manual.
+        """
+        # TODO: Implement trip planning logic
+        pass
+
+    def continue_trip_approval(self, trip_id, approval_decision, user_feedback=""):
+        """
+        Continue a pending trip approval workflow.
+        Args:
+            trip_id (int): Trip ID.
+            approval_decision (str): 'approved' or 'rejected'.
+            user_feedback (str, optional): Feedback from user.
+        Returns:
+            dict: Result dictionary for UI update.
+        TODO: Implement approval continuation logic.
+        """
+        # TODO: Implement approval continuation logic
+        pass
+
+def test_orchestrator():
+    """
+    Test the orchestrator with sample input.
+    TODO: Implement test logic for orchestrator.
+    """
+    # TODO: Implement test logic
+    pass
+
+if __name__ == "__main__":
+    test_orchestrator()
+*******************trip_orchestrator.py - CrewAI orchestration logic - ends here
+
+************webSearchService.py start******
+import os
+import requests
+from typing import Optional
+from dotenv import load_dotenv
+
+class WebSearchService:
+    """Web search service using Tavily API"""
+    
+    BASE_URL = "https://api.tavily.com/search"
+
+    def __init__(self, api_key: Optional[str] = None):
+        load_dotenv()
+        self.api_key = api_key or os.getenv("TAVILY_API_KEY")
+        
+        if not self.api_key:
+            raise ValueError("Tavily API key is required. Set TAVILY_API_KEY in environment variables or .env file")
+
+    def search(self, query: str, max_results: int = 5):
+        """
+        Search the web for information
+        
+        Args:
+            query (str): Search query
+            max_results (int): Maximum number of results to return
+            
+        Returns:
+            dict: {"query": str, "results": [{"title": str, "url": str, "content": str}]} 
+                  or {"error": str} on failure
+        """
+        if not query or not query.strip():
+            return {"error": "Search query cannot be empty"}
+            
+        if max_results < 1 or max_results > 20:
+            return {"error": "max_results must be between 1 and 20"}
+        
+        try:
+            payload = {
+                "api_key": self.api_key,
+                "query": query.strip(),
+                "num_results": max_results
+            }
+            
+            response = requests.post(self.BASE_URL, json=payload, timeout=15)
+            
+            if response.status_code == 401:
+                return {"error": "Invalid API key - check your Tavily API credentials"}
+            elif response.status_code == 429:
+                return {"error": "API rate limit exceeded - try again later"}
+            elif not response.ok:
+                return {"error": f"Search API error: {response.status_code}"}
+            
+            data = response.json()
+            results = []
+            
+            for r in data.get("results", []):
+                results.append({
+                    "title": r.get("title", "No title"),
+                    "url": r.get("url", ""),
+                    "content": r.get("content", "No content available")
+                })
+
+            return {"query": query, "results": results}
+            
+        except requests.exceptions.Timeout:
+            return {"error": "Search request timed out - check your internet connection"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Cannot connect to search service - check your internet connection"}
+        except Exception as e:
+            return {"error": f"Search failed: {str(e)}"}
+************webSearchService.py end******			
+
+**********weather_tool.py******
+import requests
+from datetime import datetime, date
+
+class WeatherTool:
+    """Weather forecasting tool using Open-Meteo API"""
+    
+    GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+    WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
+
+    def get_weather(self, place: str, days: int = 3):
+        """
+        Get weather forecast for specified number of days
+        
+        Args:
+            place (str): Location name (e.g., 'Paris', 'New York')
+            days (int): Number of forecast days (1-16)
+            
+        Returns:
+            dict: {"location": {...}, "forecast": [...]} or {"error": str}
+        """
+        if not place or not place.strip():
+            return {"error": "Location name cannot be empty"}
+            
+        if days < 1 or days > 16:
+            return {"error": "Forecast days must be between 1 and 16"}
+        
+        try:
+            # Get coordinates for the place
+            coord_params = {"name": place.strip(), "count": 1}
+            coord_response = requests.get(self.GEOCODING_URL, params=coord_params, timeout=10)
+            
+            if not coord_response.ok:
+                return {"error": f"Location service unavailable (status: {coord_response.status_code})"}
+            
+            coord_data = coord_response.json()
+            if not coord_data.get("results"):
+                return {"error": f"Location '{place}' not found - try a different spelling or nearby city"}
+                
+            location_info = coord_data["results"][0]
+            location = {
+                "latitude": location_info["latitude"],
+                "longitude": location_info["longitude"],
+                "name": location_info["name"],
+                "country": location_info.get("country", "Unknown"),
+            }
+            
+            # Get weather forecast
+            weather_params = {
+                "latitude": location["latitude"],
+                "longitude": location["longitude"],
+                "daily": ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"],
+                "timezone": "auto",
+                "forecast_days": days
+            }
+            
+            weather_response = requests.get(self.WEATHER_URL, params=weather_params, timeout=10)
+            
+            if not weather_response.ok:
+                return {"error": f"Weather service unavailable (status: {weather_response.status_code})"}
+            
+            weather_data = weather_response.json()
+            
+            if not weather_data.get("daily", {}).get("time"):
+                return {"error": "No weather data available for this location"}
+            
+            forecast = []
+            daily_data = weather_data["daily"]
+            
+            for i, date_str in enumerate(daily_data["time"]):
+                forecast.append({
+                    "date": date_str,
+                    "temp_max": daily_data["temperature_2m_max"][i],
+                    "temp_min": daily_data["temperature_2m_min"][i],
+                    "precipitation": daily_data["precipitation_sum"][i],
+                })
+            
+            return {"location": location, "forecast": forecast}
+            
+        except requests.exceptions.Timeout:
+            return {"error": "Weather request timed out - check your internet connection"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Cannot connect to weather service - check your internet connection"}
+        except Exception as e:
+            return {"error": f"Weather lookup failed: {str(e)}"}
+
+    def get_weather_range(self, place: str, start_date: str, end_date: str):
+        """
+        Get weather forecast for a specific date range
+        
+        Args:
+            place (str): Location name
+            start_date (str): Start date in YYYY-MM-DD format
+            end_date (str): End date in YYYY-MM-DD format
+            
+        Returns:
+            dict: {"location": {...}, "forecast": [...], "date_range": str} or {"error": str}
+        """
+        if not place or not place.strip():
+            return {"error": "Location name cannot be empty"}
+            
+        if not start_date or not end_date:
+            return {"error": "Both start_date and end_date are required"}
+        
+        # Validate date format and logic
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+            
+            if start_dt > end_dt:
+                return {"error": "Start date must be before or equal to end date"}
+                
+            if start_dt < date.today():
+                return {"error": "Start date cannot be in the past"}
+                
+            # Check forecast limit (16 days for free tier)
+            days_diff = (end_dt - start_dt).days + 1
+            if days_diff > 16:
+                return {"error": "Date range too long - maximum 16 days forecast available"}
+                
+        except ValueError as e:
+            return {"error": "Invalid date format - use YYYY-MM-DD (e.g., 2025-06-15)"}
+        
+        try:
+            # Get coordinates
+            coord_params = {"name": place.strip(), "count": 1}
+            coord_response = requests.get(self.GEOCODING_URL, params=coord_params, timeout=10)
+            
+            if not coord_response.ok:
+                return {"error": f"Location service unavailable (status: {coord_response.status_code})"}
+            
+            coord_data = coord_response.json()
+            if not coord_data.get("results"):
+                return {"error": f"Location '{place}' not found - try a different spelling or nearby city"}
+                
+            location_info = coord_data["results"][0]
+            location = {
+                "latitude": location_info["latitude"],
+                "longitude": location_info["longitude"],
+                "name": location_info["name"],
+                "country": location_info.get("country", "Unknown"),
+            }
+            
+            # Get weather for date range
+            weather_params = {
+                "latitude": location["latitude"],
+                "longitude": location["longitude"],
+                "daily": ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", 
+                         "weather_code", "wind_speed_10m_max"],
+                "timezone": "auto",
+                "start_date": start_date,
+                "end_date": end_date
+            }
+            
+            weather_response = requests.get(self.WEATHER_URL, params=weather_params, timeout=10)
+            
+            if not weather_response.ok:
+                return {"error": f"Weather service unavailable (status: {weather_response.status_code})"}
+            
+            weather_data = weather_response.json()
+            
+            if not weather_data.get("daily", {}).get("time"):
+                return {"error": f"No weather data available for {place} in the requested date range"}
+            
+            forecast = []
+            daily_data = weather_data["daily"]
+            
+            for i, date_str in enumerate(daily_data["time"]):
+                forecast.append({
+                    "date": date_str,
+                    "temp_max": daily_data["temperature_2m_max"][i],
+                    "temp_min": daily_data["temperature_2m_min"][i],
+                    "precipitation": daily_data["precipitation_sum"][i],
+                    "weather_code": daily_data["weather_code"][i],
+                    "wind_speed_max": daily_data["wind_speed_10m_max"][i],
+                })
+            
+            return {
+                "location": location, 
+                "forecast": forecast,
+                "date_range": f"{start_date} to {end_date}"
+            }
+            
+        except requests.exceptions.Timeout:
+            return {"error": "Weather request timed out - check your internet connection"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Cannot connect to weather service - check your internet connection"}
+        except Exception as e:
+            return {"error": f"Weather lookup failed: {str(e)}"}
+***********weather_tool.py ends here************
+
+************current_datetime.py start herefrom datetime import datetime
+import pytz
+from typing import Optional
+
+class DateTimeTool:
+    """Tool for getting current date and time information"""
+
+    def get_current_datetime(self, timezone: Optional[str] = None, format_str: Optional[str] = None):
+        """
+        Get current date and time information
+        
+        Args:
+            timezone (str, optional): Timezone name (e.g., 'UTC', 'US/Eastern', 'Asia/Kolkata')
+            format_str (str, optional): Custom format string (e.g., '%Y-%m-%d %H:%M:%S')
+            
+        Returns:
+            dict: {"datetime": str, "date": str, "time": str, "timestamp": float, "timezone": str}
+                  or {"error": str} on failure
+        """
+        try:
+            if timezone:
+                if timezone.strip() == "":
+                    return {"error": "Timezone cannot be empty string"}
+                try:
+                    tz = pytz.timezone(timezone.strip())
+                    current_dt = datetime.now(tz)
+                except pytz.exceptions.UnknownTimeZoneError:
+                    return {"error": f"Unknown timezone '{timezone}' - use format like 'UTC', 'US/Eastern', 'Asia/Kolkata'"}
+            else:
+                current_dt = datetime.now()
+            
+            result = {
+                "datetime": current_dt.isoformat(),
+                "date": current_dt.date().isoformat(),
+                "time": current_dt.time().isoformat(),
+                "timestamp": current_dt.timestamp(),
+                "timezone": str(current_dt.tzinfo) if current_dt.tzinfo else "local"
+            }
+            
+            if format_str:
+                if not format_str.strip():
+                    return {"error": "Format string cannot be empty"}
+                try:
+                    result["formatted"] = current_dt.strftime(format_str.strip())
+                except ValueError as e:
+                    return {"error": f"Invalid format string '{format_str}': {str(e)}"}
+            
+            return result
+            
+        except Exception as e:
+            return {"error": f"DateTime operation failed: {str(e)}"}
+
+    def get_today_date(self):
+        """
+        Get today's date in YYYY-MM-DD format
+        
+        Returns:
+            dict: {"date": "YYYY-MM-DD"} or {"error": str}
+        """
+        try:
+            return {"date": datetime.now().date().isoformat()}
+        except Exception as e:
+            return {"error": f"Date operation failed: {str(e)}"}
+********current_datetime.py ends here
+*********amadeus_hotel_search.py start
+
+"""
+Amadeus Hotel Search Toolkit
+----------------------------
+Provides a class to search for hotels and offers using the Amadeus API.
+Class and methods are documented for agent/tool integration.
+"""
+
+from amadeus import Client, ResponseError
+import os
+from typing import List, Tuple, Dict, Any, Optional
+try:
+    from ..config import AMADEUS_CLIENT_ID, AMADEUS_CLIENT_SECRET
+except ImportError:
+    # Fallback for when imported directly
+    from dotenv import load_dotenv
+    load_dotenv()
+    AMADEUS_CLIENT_ID = os.getenv("AMADEUS_CLIENT_ID")
+    AMADEUS_CLIENT_SECRET = os.getenv("AMADEUS_CLIENT_SECRET")
+
+class AmadeusHotelToolkit:
+    """
+    Toolkit for searching hotels and offers using Amadeus API.
+    Encapsulates Amadeus client and provides agent-friendly methods.
+    """
+    def __init__(self):
+        client_id = AMADEUS_CLIENT_ID
+        client_secret = AMADEUS_CLIENT_SECRET
+        
+        if not client_id or not client_secret:
+            raise ValueError("Amadeus API credentials required. Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET in environment or .env file")
+        
+        self.amadeus = Client(
+            client_id=client_id,
+            client_secret=client_secret
+        )
+
+    def get_city_code(self, city_name: str) -> Optional[str]:
+        """
+        Get the IATA city code for a given city name using Amadeus API.
+        Args:
+            city_name (str): Name of the city.
+        Returns:
+            Optional[str]: IATA city code if found, else None.
+        """
+        try:
+            response = self.amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
+            locations = response.data
+            return locations[0]['iataCode'] if locations else None
+        except ResponseError as error:
+            print(f"City code failed: {error}")
+            return None
+
+    def hotel_list(self, city_name: str, radius: int = 5) -> Tuple[List[str], List[Dict[str, Any]]]:
+        """
+        Get a list of hotel IDs and hotel details for a city using Amadeus API.
+        Args:
+            city_name (str): Name of the city.
+            radius (int): Search radius in KM (default: 5).
+        Returns:
+            Tuple[List[str], List[Dict[str, Any]]]: List of hotel IDs and hotel details.
+        """
+        city_code = self.get_city_code(city_name)
+        if not city_code:
+            print(f"City '{city_name}' not found.")
+            return [], []
+        try:
+            response = self.amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code, radius=radius, radiusUnit="KM")
+            hotels = response.data
+            hotel_ids = [hotel.get("hotelId") for hotel in hotels]
+            return hotel_ids, hotels
+        except ResponseError as error:
+            print(f"Hotel list failed: {error.response.body}")
+            return [], []
+
+    def extract_hotel_info(self, offer: dict) -> None:
+        """
+        Print offer details for a hotel (does not print hotel info).
+        Args:
+            offer (dict): Offer data for a hotel from Amadeus API.
+        Returns:
+            None
+        """
+        if 'offers' in offer:
+            for offer_item in offer.get('offers', []):
+                print("--- Offer Info ---")
+                print(f"  Offer ID: {offer_item.get('id', 'N/A')}")
+                print(f"  Check-in: {offer_item.get('checkInDate', 'N/A')}")
+                print(f"  Check-out: {offer_item.get('checkOutDate', 'N/A')}")
+                print(f"  Rate Code: {offer_item.get('rateCode', 'N/A')}")
+                print(f"  Board Type: {offer_item.get('boardType', 'N/A')}")
+                print(f"  Room Type: {offer_item.get('roomType', 'N/A')}")
+                print(f"  Room Type Code: {offer_item.get('roomTypeCode', 'N/A')}")
+                desc = offer_item.get('description', {}).get('text')
+                if desc:
+                    print(f"  Description: {desc}")
+                room = offer_item.get('room', {})
+                print(f"  Room: {room.get('type', 'N/A')}")
+                print(f"  Room Category: {room.get('category', 'N/A')}")
+                print(f"  Beds: {room.get('beds', 'N/A')}")
+                print(f"  Bed Type: {room.get('bedType', 'N/A')}")
+                room_desc = room.get('description', {}).get('text')
+                if room_desc:
+                    print(f"  Room description: {room_desc}")
+                room_name = room.get('name', {}).get('text')
+                if room_name:
+                    print(f"  Room name: {room_name}")
+                guests = offer_item.get('guests', {})
+                print(f"  Adults: {guests.get('adults', 'N/A')}")
+                print(f"  Children: {guests.get('children', 'N/A')}")
+                price = offer_item.get('price', {})
+                print(f"  Price: {price.get('total', 'N/A')} {price.get('currency', 'N/A')}")
+                print(f"  Base Price: {price.get('base', 'N/A')} {price.get('currency', 'N/A')}")
+                print(f"  Taxes: {price.get('taxes', 'N/A')}")
+                variations = price.get('variations', {})
+                avg_base = variations.get('average', {}).get('base')
+                if avg_base:
+                    print(f"  Average base price: {avg_base}")
+                changes = variations.get('changes', [])
+                for change in changes:
+                    start = change.get('startDate')
+                    end = change.get('endDate')
+                    base = change.get('base')
+                    if start and end and base:
+                        print(f"  Price change: {base} ({start} to {end})")
+                policies = offer_item.get('policies', {})
+                refundable = policies.get('refundable', {}).get('cancellationRefund')
+                if refundable:
+                    print(f"  Refund policy: {refundable}")
+                cancellation = policies.get('cancellation', {})
+                if cancellation:
+                    print(f"  Cancellation policy: {cancellation}")
+                breakfast = offer_item.get('breakfast', {})
+                if breakfast:
+                    print(f"  Breakfast: {breakfast}")
+                if 'self' in offer_item:
+                    print(f"  Offer link: {offer_item['self']}")
+                print()
+
+    def hotel_search(
+        self,
+        hotel_ids: list,
+        hotels: list,
+        check_in_date: str,
+        check_out_date: str,
+        adults: int = 1
+    ) -> list:
+        """
+        Search for hotel offers for a list of hotel IDs and print results in a uniform block per hotel.
+        Args:
+            hotel_ids (list): List of hotel IDs to search offers for.
+            hotels (list): List of hotel details.
+            check_in_date (str): Check-in date (YYYY-MM-DD).
+            check_out_date (str): Check-out date (YYYY-MM-DD).
+            adults (int): Number of adults (default: 1).
+        Returns:
+            list: List of offer data returned by Amadeus API.
+        """
+        import json
+        try:
+            id_string = ",".join(hotel_ids)
+            response = self.amadeus.shopping.hotel_offers_search.get(
+                hotelIds=id_string,
+                checkInDate=check_in_date,
+                checkOutDate=check_out_date,
+                adults=adults
+            )
+            offers = response.data if response and hasattr(response, 'data') else []
+            # Build a mapping from hotelId to offers
+            hotel_offers_map = {}
+            for offer in offers:
+                hid = offer.get('hotel', {}).get('hotelId')
+                if hid:
+                    hotel_offers_map.setdefault(hid, []).append(offer)
+            # Print uniform block per hotel
+            for idx, hotel_id in enumerate(hotel_ids):
+                hotel = hotels[idx] if idx < len(hotels) else {}
+                print(f"=== Hotel Block: {hotel_id} ===")
+                print(f"Hotel ID: {hotel_id}")
+                print(f"  Name: {hotel.get('name', 'N/A')}")
+                address = hotel.get('address', {})
+                print(f"  Address: {', '.join(address.get('lines', []))}")
+                print(f"  City: {address.get('cityName', 'N/A')}")
+                print(f"  Country: {address.get('countryCode', 'N/A')}")
+                print(f"  Postal Code: {hotel.get('postalCode', 'N/A')}")
+                geo = hotel.get('geoCode', {})
+                print(f"  Latitude: {geo.get('latitude', 'N/A')}")
+                print(f"  Longitude: {geo.get('longitude', 'N/A')}")
+                print(f"  Chain Code: {hotel.get('chainCode', 'N/A')}")
+                print(f"  Master Chain Code: {hotel.get('masterChainCode', 'N/A')}")
+                print(f"  IATA Code: {hotel.get('iataCode', 'N/A')}")
+                print(f"  Distance from city center: {hotel.get('distance', {}).get('value', 'N/A')} {hotel.get('distance', {}).get('unit', '')}")
+                print(f"  Last Update: {hotel.get('lastUpdate', 'N/A')}")
+                contact = hotel.get('contact', {})
+                print(f"  Contact Phone: {contact.get('phone', 'N/A')}")
+                print(f"  Contact Fax: {contact.get('fax', 'N/A')}")
+                amenities = hotel.get('amenities', [])
+                if amenities:
+                    print("  Amenities:")
+                    for amenity in amenities:
+                        print(f"    - {amenity}")
+                # Print offers if found
+                offers_for_hotel = hotel_offers_map.get(hotel_id, [])
+                if offers_for_hotel:
+                    print("  Offers:")
+                    for offer in offers_for_hotel:
+                        self.extract_hotel_info(offer)
+                else:
+                    print("  Offers: None found.")
+                print("========================\n")
+            return offers
+        except ResponseError as error:
+            print(f"Hotel search failed: {error.response.body}")
+            return []
+
+
+if __name__ == "__main__":
+    toolkit = AmadeusHotelToolkit()
+    city_name = "Paris"
+    check_in = "2025-12-01"
+    check_out = "2025-12-03"
+    hotel_ids, hotels = toolkit.hotel_list(city_name)
+    hotel_ids = hotel_ids[:10]
+    hotels = hotels[:10]
+    if hotel_ids:
+        toolkit.hotel_search(hotel_ids, hotels, check_in, check_out, 2)
+**************amadeus_hotel_search.py end
+**************amadeus_flight_tool.py start
+
+"""
+Amadeus Flight Search Toolkit
+-----------------------------
+Provides a class to search for flights using the Amadeus API.
+Class and methods are documented for agent/tool integration.
+"""
+
+from amadeus import Client, ResponseError
+import os
+from typing import List, Dict, Any, Optional
+try:
+    from config import AMADEUS_CLIENT_ID, AMADEUS_CLIENT_SECRET
+except ImportError:
+    # Fallback for when imported directly
+    from dotenv import load_dotenv
+    load_dotenv()
+    AMADEUS_CLIENT_ID = os.getenv("AMADEUS_CLIENT_ID")
+    AMADEUS_CLIENT_SECRET = os.getenv("AMADEUS_CLIENT_SECRET")
+
+class AmadeusFlightToolkit:
+    """
+    Toolkit for searching flights using Amadeus API.
+    Encapsulates Amadeus client and provides agent-friendly methods.
+    """
+    def __init__(self):
+        client_id = AMADEUS_CLIENT_ID
+        client_secret = AMADEUS_CLIENT_SECRET
+        
+        if not client_id or not client_secret:
+            raise ValueError("Amadeus API credentials required. Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET in environment or .env file")
+        
+        self.amadeus = Client(
+            client_id=client_id,
+            client_secret=client_secret
+        )
+
+    def get_city_code(self, city_name: str) -> Optional[str]:
+        """
+        Get the IATA city code for a given city name using Amadeus API.
+        Args:
+            city_name (str): Name of the city.
+        Returns:
+            Optional[str]: IATA city code if found, else None.
+        """
+        try:
+            response = self.amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
+            locations = response.data
+            return locations[0]['iataCode'] if locations else None
+        except ResponseError as error:
+            print(f"City code failed: {error}")
+            return None
+
+    def flight_search(
+        self,
+        origin_city: str,
+        dest_city: str,
+        departure_date: str,
+        return_date: Optional[str] = None,
+        adults: int = 1
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for flight offers between two cities using Amadeus API.
+        Args:
+            origin_city (str): Origin city name.
+            dest_city (str): Destination city name.
+            departure_date (str): Departure date (YYYY-MM-DD).
+            return_date (Optional[str]): Return date (YYYY-MM-DD, optional).
+            adults (int): Number of adults (default: 1).
+        Returns:
+            List[Dict[str, Any]]: List of flight offer details.
+        """
+        origin_code = self.get_city_code(origin_city)
+        dest_code = self.get_city_code(dest_city)
+        if not origin_code or not dest_code:
+            print(f"Invalid origin or destination city.")
+            return []
+        try:
+            search_params = {
+                "originLocationCode": origin_code,
+                "destinationLocationCode": dest_code,
+                "departureDate": departure_date,
+                "adults": adults,
+                "currencyCode": "USD",
+                "max": 4,
+            }
+            if return_date:
+                search_params["returnDate"] = return_date
+            response = self.amadeus.shopping.flight_offers_search.get(**search_params)
+            offers = response.data if response and hasattr(response, 'data') else []
+            if not offers:
+                print("No flight offers found.")
+                return []
+            print("\n--- Parsed Flight Offers ---")
+            for offer in offers:
+                price = offer.get('price', {})
+                print("--- Flight Offer ---")
+                print(f"Offer ID: {offer.get('id', 'N/A')}")
+                print(f"Type: {offer.get('type', 'N/A')}")
+                print(f"Bookable: {offer.get('instantTicketingRequired', 'N/A')}")
+                print(f"Validating Airline(s): {', '.join(offer.get('validatingAirlineCodes', []))}")
+                print(f"Number of bookable seats: {offer.get('numberOfBookableSeats', 'N/A')}")
+                print(f"Total Price: {price.get('total')} {price.get('currency')}")
+                print(f"Base Price: {price.get('base', 'N/A')} {price.get('currency', 'N/A')}")
+                print(f"Grand Total: {price.get('grandTotal', 'N/A')} {price.get('currency', 'N/A')}")
+                print(f"Last Ticketing Date: {offer.get('lastTicketingDate', 'N/A')}")
+                print(f"Fare Type: {', '.join(offer.get('pricingOptions', {}).get('fareType', []))}")
+                print(f"Included Checked Bags Only: {offer.get('pricingOptions', {}).get('includedCheckedBagsOnly', 'N/A')}")
+                print(f"Source: {offer.get('source', 'N/A')}")
+                print(f"Self Link: {offer.get('self', 'N/A')}")
+                print(f"Number of itineraries: {len(offer.get('itineraries', []))}")
+                for itin_idx, itin in enumerate(offer.get('itineraries', []), 1):
+                    print(f"  Itinerary {itin_idx}: Duration: {itin.get('duration')}")
+                    segments = itin.get('segments', [])
+                    print(f"    Number of segments: {len(segments)}")
+                    for seg_idx, seg in enumerate(segments, 1):
+                        dep = seg.get('departure', {})
+                        arr = seg.get('arrival', {})
+                        print(f"    Segment {seg_idx}:")
+                        print(f"      From: {dep.get('iataCode', 'N/A')} at {dep.get('at', 'N/A')} (Terminal: {dep.get('terminal', 'N/A')})")
+                        print(f"      To: {arr.get('iataCode', 'N/A')} at {arr.get('at', 'N/A')} (Terminal: {arr.get('terminal', 'N/A')})")
+                        print(f"      Carrier: {seg.get('carrierCode', 'N/A')}")
+                        print(f"      Flight Number: {seg.get('number', 'N/A')}")
+                        print(f"      Aircraft: {seg.get('aircraft', {}).get('code', 'N/A')}")
+                        print(f"      Segment Duration: {seg.get('duration', 'N/A')}")
+                        print(f"      Stops: {seg.get('numberOfStops', 'N/A')}")
+                        print(f"      Operating Carrier: {seg.get('operating', {}).get('carrierCode', 'N/A')}")
+                print(f"Traveler Pricing:")
+                for tp in offer.get('travelerPricings', []):
+                    print(f"  Traveler ID: {tp.get('travelerId', 'N/A')}, Type: {tp.get('travelerType', 'N/A')}")
+                    print(f"  Fare Option: {tp.get('fareOption', 'N/A')}")
+                    print(f"  Price: {tp.get('price', {}).get('total', 'N/A')} {tp.get('price', {}).get('currency', 'N/A')}")
+                    for fd in tp.get('fareDetailsBySegment', []):
+                        print(f"    Segment ID: {fd.get('segmentId', 'N/A')}")
+                        print(f"    Cabin: {fd.get('cabin', 'N/A')}, Class: {fd.get('class', 'N/A')}, Fare Basis: {fd.get('fareBasis', 'N/A')}")
+                        print(f"    Branded Fare: {fd.get('brandedFareLabel', 'N/A')} ({fd.get('brandedFare', 'N/A')})")
+                        print(f"    Included Cabin Bags: {fd.get('includedCabinBags', {}).get('weight', 'N/A')} {fd.get('includedCabinBags', {}).get('weightUnit', 'N/A')}")
+                        print(f"    Included Checked Bags: {fd.get('includedCheckedBags', {}).get('weight', 'N/A')} {fd.get('includedCheckedBags', {}).get('weightUnit', 'N/A')}")
+                        print(f"    Amenities:")
+                        for amenity in fd.get('amenities', []):
+                            print(f"      {amenity.get('amenityType', 'N/A')}: {amenity.get('description', 'N/A')} (Chargeable: {amenity.get('isChargeable', 'N/A')})")
+                print("-------------------\n")
+            return offers
+        except ResponseError as error:
+            print(f"Flight search failed: {error.response.body}")
+            return []
+
+if __name__ == "__main__":
+    toolkit = AmadeusFlightToolkit()
+    origin = input("Origin city: ").strip()
+    dest = input("Destination city: ").strip()
+    dep_date = input("Departure date (YYYY-MM-DD): ").strip()
+    ret_date = input("Return date (YYYY-MM-DD, optional): ").strip()
+    adults = input("Number of adults (default 1): ").strip()
+    adults = int(adults) if adults.isdigit() and int(adults) > 0 else 1
+    toolkit.flight_search(origin, dest, dep_date, return_date=ret_date if ret_date else None, adults=adults)
+
+***********amadeus_flight_tool.py end
+***********amadeus_experience_tool.py start
+
+"""
+Amadeus Experience Search Toolkit
+---------------------------------
+Provides a class to search for experiences/activities using the Amadeus API.
+Class and methods are documented for agent/tool integration.
+"""
+
+from amadeus import Client, ResponseError
+import os
+from typing import List, Dict, Any, Optional
+try:
+    from config import AMADEUS_CLIENT_ID, AMADEUS_CLIENT_SECRET
+except ImportError:
+    # Fallback for when imported directly
+    from dotenv import load_dotenv
+    load_dotenv()
+    AMADEUS_CLIENT_ID = os.getenv("AMADEUS_CLIENT_ID")
+    AMADEUS_CLIENT_SECRET = os.getenv("AMADEUS_CLIENT_SECRET")
+
+class AmadeusExperienceToolkit:
+    """
+    Toolkit for searching experiences/activities using Amadeus API.
+    Encapsulates Amadeus client and provides agent-friendly methods.
+    """
+    def __init__(self):
+        client_id = AMADEUS_CLIENT_ID
+        client_secret = AMADEUS_CLIENT_SECRET
+        
+        if not client_id or not client_secret:
+            raise ValueError("Amadeus API credentials required. Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET in environment or .env file")
+        
+        self.amadeus = Client(
+            client_id=client_id,
+            client_secret=client_secret
+        )
+
+    def get_city_code(self, city_name: str) -> Optional[str]:
+        """
+        Get the IATA city code for a given city name using Amadeus API.
+        Args:
+            city_name (str): Name of the city.
+        Returns:
+            Optional[str]: IATA city code if found, else None.
+        """
+        try:
+            response = self.amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
+            locations = response.data
+            return locations[0]['iataCode'] if locations else None
+        except ResponseError as error:
+            print(f"City code failed: {error}")
+            return None
+
+    def experience_search(self, city_name: str, radius_km: int = 20, max_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search for experiences/activities in a city using Amadeus API.
+        Args:
+            city_name (str): Name of the city.
+            radius_km (int): Search radius in kilometers (default: 20).
+            max_results (int): Maximum number of results to return (default: 10).
+        Returns:
+            List[Dict[str, Any]]: List of activity details.
+        """
+        try:
+            response = self.amadeus.reference_data.locations.get(keyword=city_name.strip(), subType="CITY")
+            if not response.data:
+                print(f"City '{city_name}' not found.")
+                return []
+            city_data = response.data[0]
+            geo_code = city_data.get("geoCode", {})
+            if not geo_code.get("latitude") or not geo_code.get("longitude"):
+                print(f"No coordinates found for '{city_name}'.")
+                return []
+            activities_resp = self.amadeus.shopping.activities.get(
+                latitude=geo_code["latitude"],
+                longitude=geo_code["longitude"],
+                radius=radius_km
+            )
+            activities = activities_resp.data if activities_resp and hasattr(activities_resp, 'data') else []
+            if not activities:
+                print(f"No activities found in {city_name} within {radius_km}km radius.")
+                return []
+            for act in activities[:max_results]:
+                print(f"Name: {act.get('name')}")
+                print(f"  Rating: {act.get('rating')}")
+                print(f"  Price: {act.get('price', {}).get('amount')} {act.get('price', {}).get('currencyCode')}")
+                print(f"  Description: {act.get('shortDescription')}")
+                print(f"  Booking: {act.get('bookingLink')}")
+                print()
+            return activities[:max_results]
+        except ResponseError as error:
+            print(f"Experience search failed: {error.response.body}")
+            return []
+
+
+if __name__ == "__main__":
+    toolkit = AmadeusExperienceToolkit()
+    city = input("City for experiences: ").strip()
+    radius = input("Search radius in km (default 20): ").strip()
+    max_results = input("Max results (default 10): ").strip()
+    radius = int(radius) if radius.isdigit() and int(radius) > 0 else 20
+    max_results = int(max_results) if max_results.isdigit() and int(max_results) > 0 else 10
+    toolkit.experience_search(city, radius_km=radius, max_results=max_results)
+
+**************amadeus_experience_tool.py end
