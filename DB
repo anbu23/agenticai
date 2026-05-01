@@ -1,0 +1,1668 @@
+🛠️ CrewAI Architecture
+Database Tables & Utilities
+Persistent Data & Orchestrator Usage
+Core Tables: users, trips, trip_plans, chat_history (see schema for details).
+Views: trip_summary, active_trips, trip_plans_with_details for joined/aggregated data.
+Orchestrator Responsibilities: Use db/db_utils.py functions for all database operations—fetching, creating, updating trips, plans, and chat history. Always persist agent outputs and use summary/context helpers.
+Reference: For function signatures and usage, see the Database Functions Reference section below.
+CrewAI Core Concepts
+Agent: AI entity with specific role, goal, backstory, and tools
+Task: Work item assigned to agents with success criteria and expected output
+Tool: Functions agents can use (APIs, web search, databases, etc.)
+Crew: Team of agents working together on sequential or hierarchical tasks
+Process: How agents collaborate - for Phase 2, use Process.sequential
+Key Implementation Files
+Files to Implement
+phases/phase2_crewai/trip_agents.py: Define InfoCollector, Planner, and Optimizer agents
+phases/phase2_crewai/trip_orchestrator.py: Implement CrewAITripOrchestrator class
+API Integration: Connect orchestrator to FastAPI endpoints in api/app.py
+UI Integration: Ensure PHASE_ORCHESTRATOR_MAP includes your orchestrator
+🤖 Agent Implementation
+🔍 InfoCollector Agent CrewAI Implementation
+Role: Travel Requirements Specialist
+Goal: Extract and validate complete travel requirements from user requests
+Backstory: You are an experienced travel consultant who specializes in understanding customer needs and gathering comprehensive travel requirements.
+Expected Tools to Use:
+
+web_search_service - 🔄 FALLBACK TOOL: Validate destinations and travel information when other tools fail or return no data
+current_datetime - Get current date for travel planning
+⚠️ Important: Always use web_search_service as your fallback when ANY tool fails, times out, or returns empty results. This ensures robust information gathering.
+Task: Parse user travel request and extract structured travel information
+
+Expected Output: JSON object with destination, dates, budget, travelers, preferences
+🗺️ Planner Agent CrewAI Implementation
+Role: Travel Itinerary Specialist
+Goal: Create comprehensive travel itineraries with flights, hotels, and activities
+Backstory: You are a skilled travel planner with extensive knowledge of destinations worldwide and access to the best travel booking systems.
+Expected Tools to Use:
+
+amadeus_flight_tool.flight_search - Search and book flights
+amadeus_hotel_search.hotel_list - Find hotels by location
+amadeus_hotel_search.hotel_search - Search hotels with filters
+amadeus_experience_tool.experience_search - Find local activities
+weather_tool.get_weather - Get weather forecasts for destinations
+web_search_service - 🔄 FALLBACK TOOL: Use when ANY tool fails or returns no results
+⚠️ Critical: If ANY tool fails (flights, hotels, experiences, weather), immediately use web_search_service to find alternative information. Never return empty results without trying the fallback.
+Task: Create detailed day-by-day itinerary with flights, accommodations, and activities
+
+Expected Output: Complete itinerary with flight details, hotel bookings, daily activities, and weather considerations
+⚡ Optimizer Agent CrewAI Implementation
+Role: Travel Cost Optimizer
+Goal: Optimize travel plans for cost, timing, and customer satisfaction
+Backstory: You are a financial analyst specializing in travel cost optimization and finding the best value propositions for customers.
+Expected Tools to Use:
+
+web_search_service - 🔄 PRIMARY & FALLBACK: Research alternative options, compare prices, find deals when other sources unavailable
+⚠️ Strategy: Use web_search_service extensively to find cheaper alternatives, special deals, and verify pricing. Also use as fallback when ANY other information source is needed.
+Task: Analyze and optimize the travel plan for cost and practicality
+
+Expected Output: Optimized travel plan with cost breakdown, alternative suggestions, and savings opportunities
+💻 Implementation Steps
+Step 1: Implement Agents with Database Persistence
+In phases/phase2_crewai/trip_agents.py, implement:
+
+InfoCollector: Gathers and validates user input, asks for missing details before proceeding
+Planner: Generates day-by-day itineraries, suggests local experiences, hotels, and flights
+Optimizer: Performs day-wise optimization—rearranges plan for feasibility, clustering, pacing, and weather; finds cost savings
+💾 Required Database Operations
+Each agent must save its outputs to the database using the provided utility functions.
+See Database Tables & Utilities and Database Functions Reference for details.
+Step 2: Implement Orchestrator with Database Integration
+In phases/phase2_crewai/trip_orchestrator.py, implement class CrewAITripOrchestrator:
+
+Call each agent in sequence, passing results along the chain
+Handle missing information by looping back to the user if needed
+Ensure all agent outputs conform to the Pydantic models in api/datamodels.py
+Initialize trip record: db_utils.create_trip() at start of orchestration
+Track workflow progress: Update trip status after each agent completes
+🔄 Database Workflow Sequence
+Follow the recommended workflow: initialize trip, log agent/user messages, persist plans, and update status at each stage using db_utils functions.
+See Database Tables & Utilities for orchestration guidance.
+Step 3: Integrate with FastAPI and Streamlit UI
+FastAPI Integration: Import your CrewAITripOrchestrator in api/app.py
+Create ORCHESTRATOR_MAP: Map "phase2_crewai" to your orchestrator class
+Update plan_trip endpoint: Use the orchestrator mapping to call the correct phase
+Update approve_trip endpoint: Handle approval logic through your orchestrator
+UI Integration: Add PHASE_ORCHESTRATOR_MAP in ui/main.py to reference your orchestrator
+Test Integration: Run both API and UI to verify orchestrator is properly connected
+Run: streamlit run ./ui/main.py
+Step 4: Demonstrate
+Show evidence of sequential agent execution and correct output in the UI
+Test your implementation using provided sample scenario inputs
+Validate workflow, approval, and recovery features
+🆕 FastAPI Integration
+API Endpoints Implementation Required
+📡 POST /api/v1/plan_trip
+Purpose: Main endpoint for trip planning using CrewAI orchestrator
+
+Request Parameters:
+• user_input (str): Natural language trip request
+• user_id (int): User identifier
+• phase (str): "phase2_crewai" (default)
+Expected Response:
+{ "success": true, "trip_id": 123, "message": "Trip planned successfully", "requirements": { /* TripRequirements object */ }, "plan": { /* TravelPlan object */ }, "optimization": { /* OptimizationResult object */ } }
+📡 POST /api/v1/approve
+Purpose: Handle trip approval/rejection with feedback
+
+Request Parameters:
+• trip_id (int): Trip identifier to approve/reject
+• user_id (int): User making the decision
+• approval (bool): true = approve, false = reject
+• feedback (str, optional): User feedback for improvements
+Expected Response (approval: true):
+{ "success": true, "trip_id": 123, "user_id": 456, "approval": true, "feedback": "Great plan!", "updated_status": "approved", "plan_id": 789, "message": "Travel plan approved successfully" }
+Expected Response (approval: false):
+{ "success": true, "trip_id": 123, "user_id": 456, "approval": false, "feedback": "Budget too high, please revise", "updated_status": "rejected", "plan_id": 789, "message": "Travel plan rejected" }
+📊 Data Models & Validation
+Key Pydantic Models (api/datamodels.py)
+TripRequirements: Structured user input with validation
+TravelPlan: Complete itinerary with hotels, flights, activities
+OptimizationResult: Cost analysis and improvement suggestions
+HotelSuggestion: Hotel details with pricing and amenities
+FlightSuggestion: Flight details with timing and cost
+Available Tools
+Toolkits Directory
+Web Search: toolkits/web_search_service.py - 🔄 CRITICAL FALLBACK TOOL - Tavily API integration for when other APIs fail
+Weather: toolkits/weather_tool.py - Open-Meteo API for forecasts
+Flights: toolkits/amadeus_flight_tool.py - Flight search and booking
+Hotels: toolkits/amadeus_hotel_search.py - Hotel search and rates
+Experiences: toolkits/amadeus_experience_tool.py - Local activities
+DateTime: toolkits/current_datetime.py - Date validation and calculations
+🚨 FALLBACK STRATEGY: web_search_service must be used whenever:
+Amadeus APIs return no results or fail
+Weather API is unavailable
+Any tool throws an error or times out
+You need to verify information or find alternatives
+Never return "no results found" without trying web search first!
+Database Functions Reference
+db/db_utils.py - Key Functions
+create_trip(trip: Trip) -> int - Initialize new trip
+update_trip_status(trip_id: int, status: str) - Track progress
+save_chat_message_service(msg: ChatHistory) - Log conversations
+save_travel_plan_to_db(plan, trip_id, version) - Persist plans
+get_trip_plan_by_trip_id(trip_id, version) - Load saved plans
+💡 Pro Tip: Import these functions in your orchestrator:
+from db.db_utils import create_trip, update_trip_status, save_chat_message_service
+🧪 Testing Implementation
+Required Test Cases
+Complete Query Test
+"I want to plan a leisure trip from Bangalore to Goa from [Future Start Date] to [Future End Date], for 2 adults with a budget of 8000 INR."
+Note: Replace the date placeholders with valid future travel dates. Dates must be later than today’s date.
+Expected: All agents run sequentially, produce valid TravelPlan object
+Multi-turn Conversation Test
+Turn 1: I want to plan a solo business trip from Mumbai to Singapore.
+Turn 2: It will be next month, for 4 days starting on the 15th, with a budget of $1200 per day.
+Expected: System handles conversation history and completes planning
+🔑 Key Points to Remember
+Conform to Data Models:
+All agent outputs must strictly follow the Pydantic data models defined in api/datamodels.py
+Orchestrator Mapping:
+Ensure your orchestrator class is correctly referenced in PHASE_ORCHESTRATOR_MAP in ui/main.py
+Testing:
+Use both complete and incomplete user queries to test your implementation
+Validate sequential workflow execution
+Test error handling and recovery mechanisms
+⚡ Performance Requirements
+Target: Complete travel planning within 2-3 minutes for high evaluation scores.
+
+Tips: Add timeouts to API calls (timeout=30), avoid infinite loops, limit LLM retries, test end-to-end before submission.
+
+🔄 Version Control
+Git Workflow for All Phases
+Ensure your local repository is initialized and connected to your remote GitLab project.
+After completing each phase, add and commit your changes:
+git add . && git commit -m "Phase 2: CrewAI implementation complete"
+Push your changes to the main branch:
+git push origin main
+Repeat this process for each phase. Always push to main after completing and testing your work.
+For detailed Git setup, SSH key, and troubleshooting, refer to see Instructions on getting started with labs page activity.
+Ready to proceed? Before moving to the next phase, ensure your Phase 2 implementation meets all requirements:
+
+✅ Implementation Checklist
+Sequential agent execution (InfoCollector → Planner → Optimizer)
+Database persistence for all agent outputs and workflow states
+Tool integration with real API calls
+Pydantic data model validation
+Error handling and user feedback loops
+Working FAST API End Points and Streamlit UI integration
+FastAPI endpoint must respond within 2-3 minutes.
+
+APP.PY STARTS
+"""
+FastAPI Application - LEARNING PROJECT
+TODO: Complete the API implementation by connecting your AI agents
+
+Learning Objectives:
+- Learn to create FastAPI endpoints
+- Understand API request/response patterns
+- Integrate with agent orchestrators
+- Handle different AI framework phases
+"""
+import sys
+import os
+# Add project root to Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from fastapi import FastAPI
+from typing import Optional, List
+from api.datamodels import HotelSuggestion, FlightSuggestion, ApprovalRequest, TripPlanModel, TravelPlan
+from api.tools import hotel_search_tool, flight_search_tool, weather_lookup_tool, datetime_tool_func, local_experience_tool
+from db import db_utils
+
+app = FastAPI(title="TravelMate AI API", version="1.0.0")
+
+# =============================================================================
+# API ENDPOINTS
+# =============================================================================
+
+# TODO: Implement main trip planning endpoint
+@app.post("/api/v1/plan_trip")
+def plan_trip(user_input: str, user_id: int, phase: str = "phase2_crewai"):
+    """
+    Plan a trip using the specified AI framework
+    
+    Supported phases:
+    - phase2_crewai: CrewAI framework with sequential agents
+    - phase3_autogen: Microsoft AutoGen with group chat  
+    - phase4_langgraph: LangGraph with state management
+    """
+    
+    # TODO: Import and use orchestrators based on phase
+    # TODO: Add error handling for unsupported phases
+    return "[LEARNING PROJECT] Implement your AI agent orchestrators here" # Placeholder return
+
+# TODO: Implement approval endpoint
+@app.post("/api/v1/approve")
+def approve_trip(request: ApprovalRequest):
+    """Approve or reject a travel plan"""
+    # TODO: Handle approval logic with your agents
+
+    return "[LEARNING PROJECT] Implement approval handling logic here" # Placeholder return
+
+# TODO: Implement health check endpoint
+@app.get("/")
+@app.get("/api/v1/health")
+def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "TravelMate AI API"}
+
+# Trip plan management endpoints
+@app.get("/api/v1/trip/{trip_id}/plan")
+def get_trip_plan(trip_id: int, version: Optional[int] = None):
+    """Get trip plan by trip ID"""
+    try:
+        trip_plan = db_utils.get_trip_plan_by_trip_id(trip_id, version)
+        if trip_plan:
+            return {
+                "success": True,
+                "plan": trip_plan.to_travel_plan().dict(),
+                "metadata": {
+                    "trip_id": trip_plan.trip_id,
+                    "version": trip_plan.version,
+                    "status": trip_plan.status,
+                    "generated_at": trip_plan.generated_at
+                }
+            }
+        else:
+            return {"success": False, "error": "Trip plan not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/v1/trip/{trip_id}/plan")
+def save_trip_plan(trip_id: int, travel_plan: TravelPlan, version: int = 1):
+    """Save a trip plan"""
+    try:
+        plan_id = db_utils.save_travel_plan_to_db(travel_plan, trip_id, version)
+        return {
+            "success": True, 
+            "plan_id": plan_id,
+            "message": f"Trip plan saved for trip {trip_id}"
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.put("/api/v1/trip-plan/{plan_id}/status")
+def update_plan_status(plan_id: int, status: str):
+    """Update trip plan status"""
+    try:
+        updated = db_utils.update_trip_plan_status(plan_id, status)
+        if updated:
+            return {"success": True, "message": f"Plan status updated to {status}"}
+        else:
+            return {"success": False, "error": "Plan not found or update failed"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+
+if __name__ == "__main__":
+    print("TravelMate AI API - Learning Project")
+    print("[LEARNING PROJECT] Complete the FastAPI implementation by connecting your AI agents")
+    print("Hint: Use 'uvicorn api.app:app --reload' to run the API server")
+APP.PY ENDS HERE
+datamodels.py start here
+"""
+Beginner-Friendly Travel Agent Data Models
+==========================================
+
+This file contains all the data models for the TravelMate AI application.
+Models are designed to be:
+- Easy to understand and use
+- Robust with sensible defaults
+- Flexible for real-world agent responses
+- Self-healing when possible
+
+Key Design Principles:
+1. Required fields have clear validation messages
+2. Optional fields always have defaults
+3. Models can auto-fix common issues
+4. Nested models are tolerant of missing data
+5. All models have helpful utility methods
+"""
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, Optional, List, Literal, Dict, Union
+from datetime import date, datetime
+import json
+
+# =============================================================================
+# CORE DATABASE MODELS
+# =============================================================================
+
+class User(BaseModel):
+    """User model - represents a traveler using the system"""
+    id: Optional[int] = None
+    name: str
+    email: str
+    profile: Optional[str] = None
+    travel_preferences: Optional[str] = None
+    travel_constraints: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    @field_validator("email")
+    def validate_email(cls, email):
+        """Basic email validation to match database constraint"""
+        if not email or '@' not in email or '.' not in email:
+            raise ValueError("Email must contain @ and . characters")
+        return email
+
+    def __str__(self) -> str:
+        return f"User({self.name})"
+
+# Example: Approve/Reject request model
+class ApprovalRequest(BaseModel):
+    trip_id: int
+    user_id: int
+    approval: bool
+    feedback: Optional[str] = None
+    
+class Trip(BaseModel):
+    """
+    Trip model - represents a planned trip
+    
+    This is the main entity that tracks all trip information.
+    Required fields are validated, optional fields have sensible defaults.
+    """
+    # System fields
+    id: Optional[int] = None
+    user_id: int
+    phase: Literal["phase1_langflow", "phase2_crewai", "phase3_autogen", "phase4_langgraph"]
+    
+    # Trip identification
+    title: str = "My Trip"
+    
+    # Required travel details
+    origin: str
+    destination: str
+    trip_startdate: date
+    trip_enddate: date
+    
+    # Travel preferences with safe defaults
+    accommodation_type: Literal[
+        "hotel", "resort", "hostel", "apartment", "guesthouse", 
+        "luxury", "own_place", "friend_place", "official_accommodation", 
+        "budget", "family-friendly", "business", "youth hostel"
+    ] = "hotel"
+    
+    # Traveler details with validation
+    no_of_adults: int = Field(default=1, ge=1, description="Must be at least 1 adult")
+    no_of_children: int = Field(default=0, ge=0, description="Cannot be negative")
+    
+    # Budget with validation
+    budget: float = Field(default=500.0, ge=0, description="Budget cannot be negative")
+    currency: str = "USD"
+    
+    # Trip status
+    trip_status: Literal["draft", "confirmed", "in_progress", "completed", "cancelled"] = "draft"
+    
+    # Optional details with defaults
+    purpose: str = "leisure"
+    travel_preferences: str = "none"
+    travel_constraints: str = "none"
+    
+    # System timestamps
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @field_validator("trip_enddate")
+    def validate_dates(cls, trip_enddate, info):
+        """Ensure end date is after start date"""
+        if "trip_startdate" in info.data and trip_enddate <= info.data["trip_startdate"]:
+            raise ValueError("Trip end date must be after start date")
+        return trip_enddate
+    
+    @field_validator("trip_startdate")
+    def validate_future_date(cls, trip_startdate, info):
+        """Ensure trip starts in the future for new trips, but allow existing trips with past dates"""
+        from datetime import date
+        
+        # Check if this is an existing trip (has an id) or a new trip
+        trip_id = info.data.get("id")
+        
+        # Only enforce future date validation for new trips (no id)
+        if trip_id is None and trip_startdate <= date.today():
+            raise ValueError("Trip start date must be in the future")
+        return trip_startdate
+
+    @field_validator("accommodation_type", mode="before")
+    def normalize_accommodation_type(cls, value):
+        """Map combined accommodation types to database literals"""
+        if not value:
+            return "hotel"
+        
+        # Convert to lowercase for easier matching
+        value_lower = str(value).lower()
+        
+        # Mapping for combined values from agents
+        accommodation_mapping = {
+            "luxury hotel": "luxury",
+            "luxury resort": "luxury", 
+            "budget hotel": "hotel",
+            "boutique hotel": "hotel",
+            "business hotel": "hotel",
+            "luxury accommodation": "luxury",
+            "budget accommodation": "hotel",
+            "upscale hotel": "luxury",
+            "premium hotel": "luxury",
+            "high-end hotel": "luxury",
+            "5-star hotel": "luxury",
+            "4-star hotel": "hotel",
+            "3-star hotel": "hotel",
+            "budget hostel": "hostel",
+            "luxury hostel": "hostel",
+            "vacation rental": "apartment",
+            "rental apartment": "apartment",
+            "holiday apartment": "apartment",
+            "serviced apartment": "apartment",
+            "airbnb": "apartment",
+            "bed and breakfast": "guesthouse",
+            "b&b": "guesthouse",
+            "inn": "guesthouse",
+            "motel": "hotel",
+            "lodge": "hotel",
+            "villa": "luxury",
+            "mansion": "luxury",
+            "penthouse": "luxury",
+            "suite": "luxury"
+        }
+        
+        # Check for exact matches first
+        if value_lower in accommodation_mapping:
+            return accommodation_mapping[value_lower]
+        
+        # Check for partial matches
+        for key, mapped_value in accommodation_mapping.items():
+            if key in value_lower:
+                return mapped_value
+        
+        # Check if it's already a valid literal
+        valid_types = ["hotel", "resort", "hostel", "apartment", "guesthouse", 
+                      "luxury", "own_place", "friend_place", "official_accommodation"]
+        if value_lower in valid_types:
+            return value_lower
+        
+        # Default fallback
+        return "hotel"
+    
+    # Utility methods for easy use
+    def duration_days(self) -> int:
+        """Calculate trip duration in days"""
+        return (self.trip_enddate - self.trip_startdate).days + 1
+    
+    def total_travelers(self) -> int:
+        """Get total number of travelers"""
+        return self.no_of_adults + self.no_of_children
+    
+    def daily_budget(self) -> float:
+        """Calculate budget per day"""
+        return self.budget / self.duration_days() if self.budget > 0 else 0.0
+    
+    def budget_display(self) -> str:
+        """Format budget for display"""
+        return f"${self.budget:.0f} {self.currency}"
+    
+    def travelers_display(self) -> str:
+        """Format travelers for display"""
+        parts = []
+        if self.no_of_adults > 0:
+            parts.append(f"{self.no_of_adults} adult{'s' if self.no_of_adults > 1 else ''}")
+        if self.no_of_children > 0:
+            parts.append(f"{self.no_of_children} child{'ren' if self.no_of_children > 1 else ''}")
+        return ", ".join(parts)
+    
+    def route_display(self) -> str:
+        """Format route for display"""
+        return f"{self.origin} ? {self.destination}"
+    
+    def __str__(self) -> str:
+        return f"Trip({self.title}: {self.route_display()}, {self.duration_days()} days)"
+
+
+class ChatHistory(BaseModel):
+    """Chat history model - tracks conversations"""
+    id: Optional[int] = None
+    trip_id: Optional[int] = None  # Can be None for pre-trip chats
+    user_id: int
+    role: Literal["user", "assistant", "system"]
+    phase: Optional[Literal["phase1_langflow", "phase2_crewai", "phase3_autogen", "phase4_langgraph"]] = None
+    content: str
+    metadata: Optional[str] = None
+    sequence_number: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    def __str__(self) -> str:
+        return f"Chat({self.role}: {self.content[:50]}...)"
+
+
+class TripPlanModel(BaseModel):
+    """Database model for storing trip plan results"""
+    id: Optional[int] = None
+    trip_id: int
+    itinerary_json: Optional[str] = None  # JSON string of itinerary
+    hotels_json: Optional[str] = None     # JSON string of hotel list
+    flights_json: Optional[str] = None    # JSON string of flight list
+    daily_budget: float = 0.0
+    total_estimated_cost: float = 0.0
+    generated_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    status: Literal["draft", "approved", "rejected"] = "draft"
+    version: int = 1
+    agent_metadata: Optional[str] = None  # JSON for agent-specific data
+    
+    def to_travel_plan(self) -> "TravelPlan":
+        """Convert database model to TravelPlan object"""
+        import json
+        
+        # Parse JSON fields
+        itinerary = json.loads(self.itinerary_json) if self.itinerary_json else "Itinerary not available"
+        hotels = json.loads(self.hotels_json) if self.hotels_json else []
+        flights = json.loads(self.flights_json) if self.flights_json else []
+        
+        return TravelPlan(
+            itinerary=itinerary,
+            hotels=hotels,
+            flights=flights,
+            daily_budget=self.daily_budget,
+            total_estimated_cost=self.total_estimated_cost
+        )
+    
+    @classmethod
+    def from_travel_plan(cls, travel_plan: "TravelPlan", trip_id: int, version: int = 1) -> "TripPlanModel":
+        """Create database model from TravelPlan object"""
+        import json
+        
+        return cls(
+            trip_id=trip_id,
+            itinerary_json=json.dumps(travel_plan.itinerary),
+            hotels_json=json.dumps([h.dict() if hasattr(h, 'dict') else h for h in travel_plan.hotels]),
+            flights_json=json.dumps([f.dict() if hasattr(f, 'dict') else f for f in travel_plan.flights]),
+            daily_budget=travel_plan.daily_budget,
+            total_estimated_cost=travel_plan.total_estimated_cost or 0.0,
+            version=version,
+            status="draft"
+        )
+    
+    def __str__(self) -> str:
+        return f"TripPlan(trip_id={self.trip_id}, v{self.version}, {self.status})"
+
+
+# =============================================================================
+# AGENT WORKFLOW MODELS (Beginner-Friendly)
+# =============================================================================
+
+class TripRequirements(BaseModel):
+    """
+    Model for collecting trip requirements from user input
+    
+    This model is very tolerant and will try to auto-fix issues:
+    - Missing optional fields get defaults
+    - Invalid mode gets corrected
+    - Incomplete data switches to "missing" mode automatically
+    """
+    
+    # Mode: "trip" for complete data, "missing" for incomplete data
+    mode: Literal["trip", "missing"] = "trip"
+    
+    # Core trip requirements
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    trip_startdate: Optional[date] = None
+    trip_enddate: Optional[date] = None
+    
+    # Traveler details with safe defaults
+    no_of_adults: Optional[int] = 1
+    no_of_children: int = 0
+    
+    # Budget details with defaults
+    budget: Optional[float] = None
+    currency: str = "USD"
+    
+    # Travel preferences with defaults
+    accommodation_type: str = "hotel"
+    purpose: str = "leisure"
+    travel_preferences: str = "none"
+    travel_constraints: str = "none"
+    
+    # Missing information handling
+    error: Optional[Literal["MISSING"]] = None
+    missing_fields: Optional[List[str]] = None
+    agent_message: Optional[str] = None
+
+    @field_validator("trip_enddate")
+    def validate_dates(cls, trip_enddate, info):
+        """Validate dates only in trip mode - be forgiving"""
+        start = info.data.get("trip_startdate")
+        mode = info.data.get("mode", "trip")
+        
+        if mode == "trip" and trip_enddate and start and trip_enddate <= start:
+            raise ValueError("Trip end date must be after start date")
+        return trip_enddate
+
+    @field_validator("accommodation_type")
+    def normalize_accommodation_type(cls, value):
+        """Map combined accommodation types to database literals"""
+        if not value:
+            return "hotel"
+        
+        # Convert to lowercase for easier matching
+        value_lower = str(value).lower()
+        
+        # Mapping for combined values from agents
+        accommodation_mapping = {
+            "luxury hotel": "luxury",
+            "luxury resort": "luxury", 
+            "budget hotel": "hotel",
+            "boutique hotel": "hotel",
+            "business hotel": "hotel",
+            "luxury accommodation": "luxury",
+            "budget accommodation": "hotel",
+            "upscale hotel": "luxury",
+            "premium hotel": "luxury",
+            "high-end hotel": "luxury",
+            "5-star hotel": "luxury",
+            "4-star hotel": "hotel",
+            "3-star hotel": "hotel",
+            "budget hostel": "hostel",
+            "luxury hostel": "hostel",
+            "vacation rental": "apartment",
+            "rental apartment": "apartment",
+            "holiday apartment": "apartment",
+            "serviced apartment": "apartment",
+            "airbnb": "apartment",
+            "bed and breakfast": "guesthouse",
+            "b&b": "guesthouse",
+            "inn": "guesthouse",
+            "motel": "hotel",
+            "lodge": "hotel",
+            "villa": "luxury",
+            "mansion": "luxury",
+            "penthouse": "luxury",
+            "suite": "luxury"
+        }
+        
+        # Check for exact matches first
+        if value_lower in accommodation_mapping:
+            return accommodation_mapping[value_lower]
+        
+        # Check for partial matches
+        for key, mapped_value in accommodation_mapping.items():
+            if key in value_lower:
+                return mapped_value
+        
+        # Check if it's already a valid literal
+        valid_types = ["hotel", "resort", "hostel", "apartment", "guesthouse", 
+                      "luxury", "own_place", "friend_place", "official_accommodation",
+                      "budget", "family-friendly", "business", "youth hostel"]
+        if value_lower in valid_types:
+            return value_lower
+        
+        # Default fallback
+        return "hotel"
+
+    @model_validator(mode="before")
+    def auto_fix_and_validate(cls, values):
+        """
+        Auto-fix common issues and validate requirements
+        This makes the model very beginner-friendly
+        """
+        if not isinstance(values, dict):
+            values = {}
+        
+        # Ensure mode is set
+        if "mode" not in values:
+            values["mode"] = "trip"
+        
+        mode = values.get("mode", "trip")
+        
+        if mode == "trip":
+            # Check required fields for trip mode
+            required_fields = ["origin", "destination", "trip_startdate", "trip_enddate", "no_of_adults", "budget"]
+            missing = []
+            
+            for field in required_fields:
+                if not values.get(field):
+                    missing.append(field)
+            
+            # Auto-switch to missing mode if critical fields missing
+            if missing:
+                values["mode"] = "missing"
+                values["missing_fields"] = missing
+                values["error"] = "MISSING"
+                values["agent_message"] = f"Please provide: {', '.join(missing)}"
+        
+        elif mode == "missing":
+            # Ensure missing mode has required fields
+            if not values.get("missing_fields"):
+                values["missing_fields"] = ["origin", "destination"]
+            if not values.get("error"):
+                values["error"] = "MISSING"
+            if not values.get("agent_message"):
+                values["agent_message"] = "Additional information needed"
+        
+        return values
+
+    def is_complete(self) -> bool:
+        """Check if requirements are complete for trip creation"""
+        return self.mode == "trip" and not self.error
+    
+    def get_missing_info(self) -> str:
+        """Get user-friendly message about missing information"""
+        if self.mode == "missing" and self.missing_fields:
+            return f"Please provide: {', '.join(self.missing_fields)}"
+        return "All information collected"
+
+    def to_trip_dict(self, user_id: int, phase: str, title: str = "My Trip") -> dict:
+        """
+        Convert to Trip model dictionary for database insertion
+        Only works if requirements are complete
+        """
+        if not self.is_complete():
+            raise ValueError(f"Cannot convert incomplete requirements to Trip. Missing: {self.missing_fields}")
+
+        return {
+            "user_id": user_id,
+            "phase": phase,
+            "title": title,
+            "origin": self.origin,
+            "destination": self.destination,
+            "trip_startdate": self.trip_startdate,
+            "trip_enddate": self.trip_enddate,
+            "accommodation_type": self.accommodation_type,
+            "no_of_adults": self.no_of_adults or 1,
+            "no_of_children": self.no_of_children,
+            "budget": self.budget or 500.0,
+            "currency": self.currency,
+            "purpose": self.purpose,
+            "travel_preferences": self.travel_preferences,
+            "travel_constraints": self.travel_constraints,
+            "trip_status": "draft"
+        }
+
+    def __str__(self) -> str:
+        if self.mode == "missing":
+            return f"TripRequirements(Missing: {self.missing_fields})"
+        return f"TripRequirements({self.origin} ? {self.destination})"
+
+
+class HotelSuggestion(BaseModel):
+    """
+    Hotel suggestion - very tolerant of missing data
+    All fields have defaults to handle real-world agent responses
+    """
+    name: str = "Hotel Name Not Available"
+    price_per_night: float = 0.0
+    rating: float = 0.0
+    location: str = "Location TBD"
+    amenities: List[str] = []
+    
+    def price_display(self) -> str:
+        """Format price for display"""
+        if self.price_per_night > 0:
+            return f"${self.price_per_night:.2f}/night"
+        return "Price TBD"
+    
+    def rating_display(self) -> str:
+        """Format rating for display"""
+        if self.rating > 0:
+            return f"{self.rating:.1f}?"
+        return "Not rated"
+    
+    def __str__(self) -> str:
+        return f"Hotel({self.name}, {self.price_display()})"
+
+
+class FlightSuggestion(BaseModel):
+    """
+    Flight suggestion - very tolerant of missing data
+    All required fields have defaults
+    """
+    airline: str = "Airline TBD"
+    departure_time: str = "Time TBD"
+    arrival_time: Optional[str] = None
+    price: float = 0.0
+    duration: str = "Duration TBD"
+    stops: int = 0
+    
+    def price_display(self) -> str:
+        """Format price for display"""
+        if self.price > 0:
+            return f"${self.price:.2f}"
+        return "Price TBD"
+    
+    def stops_display(self) -> str:
+        """Format stops for display"""
+        if self.stops == 0:
+            return "Direct"
+        elif self.stops == 1:
+            return "1 stop"
+        else:
+            return f"{self.stops} stops"
+    
+    def __str__(self) -> str:
+        return f"Flight({self.airline}, {self.price_display()}, {self.stops_display()})"
+
+
+class TravelPlan(BaseModel):
+    """
+    Complete travel plan - flexible structure for agent responses
+    Can handle both string and structured itineraries
+    """
+    itinerary: Union[str, List[Dict[str, Any]], Dict[str, Any]] = "Itinerary will be provided"
+    hotels: List[HotelSuggestion] = []
+    flights: List[FlightSuggestion] = []
+    daily_budget: float = 0.0
+    total_estimated_cost: Optional[float] = None
+    
+    @field_validator("hotels", mode="before")
+    def validate_hotels(cls, v):
+        """Convert dict/partial data to HotelSuggestion objects"""
+        if not v:
+            return []
+        
+        result = []
+        for hotel in v:
+            if isinstance(hotel, dict):
+                # Create HotelSuggestion with defaults for missing fields
+                result.append(HotelSuggestion(**hotel))
+            elif isinstance(hotel, HotelSuggestion):
+                result.append(hotel)
+        return result
+    
+    @field_validator("flights", mode="before")
+    def validate_flights(cls, v):
+        """Convert dict/partial data to FlightSuggestion objects"""
+        if not v:
+            return []
+        
+        result = []
+        for flight in v:
+            if isinstance(flight, dict):
+                # Create FlightSuggestion with defaults for missing fields
+                result.append(FlightSuggestion(**flight))
+            elif isinstance(flight, FlightSuggestion):
+                result.append(flight)
+        return result
+    
+    def hotel_count(self) -> int:
+        """Get number of hotel suggestions"""
+        return len(self.hotels)
+    
+    def flight_count(self) -> int:
+        """Get number of flight suggestions"""
+        return len(self.flights)
+    
+    def avg_hotel_price(self) -> float:
+        """Calculate average hotel price per night"""
+        if not self.hotels:
+            return 0.0
+        valid_prices = [h.price_per_night for h in self.hotels if h.price_per_night > 0]
+        return sum(valid_prices) / len(valid_prices) if valid_prices else 0.0
+    
+    def itinerary_text(self) -> str:
+        """Get itinerary as text regardless of input format"""
+        if isinstance(self.itinerary, str):
+            return self.itinerary
+        elif isinstance(self.itinerary, (list, dict)):
+            return json.dumps(self.itinerary, indent=2)
+        return "Itinerary not available"
+    
+    def __str__(self) -> str:
+        return f"TravelPlan({self.hotel_count()} hotels, {self.flight_count()} flights)"
+
+
+class OptimizationResult(BaseModel):
+    """
+    Optimization results - flexible and user-friendly
+    All fields have defaults for robust operation
+    """
+    recommendations: List[str] = []
+    cost_savings: float = 0.0
+    value_adds: List[str] = []
+    final_plan: str = "Optimization complete"
+    approval_required: bool = True
+    
+    def has_savings(self) -> bool:
+        """Check if there are cost savings"""
+        return self.cost_savings > 0
+    
+    def savings_display(self) -> str:
+        """Format savings for display"""
+        if self.cost_savings > 0:
+            return f"${self.cost_savings:.2f}"
+        return "No savings identified"
+    
+    def recommendations_count(self) -> int:
+        """Get number of recommendations"""
+        return len(self.recommendations)
+    
+    def summary(self) -> str:
+        """Get optimization summary"""
+        parts = []
+        if self.has_savings():
+            parts.append(f"Savings: {self.savings_display()}")
+        if self.recommendations_count() > 0:
+            parts.append(f"{self.recommendations_count()} recommendations")
+        if self.value_adds:
+            parts.append(f"{len(self.value_adds)} value-adds")
+        return ", ".join(parts) if parts else "Basic optimization applied"
+    
+    def __str__(self) -> str:
+        return f"Optimization({self.summary()})"
+
+datamodesl.py ends here
+datamodels.py ends here
+tools.py start here
+from typing import Optional, Dict, Any, List
+from .datamodels import HotelSuggestion, FlightSuggestion
+
+from toolkits.amadeus_hotel_search import AmadeusHotelToolkit
+from toolkits.amadeus_flight_tool import AmadeusFlightToolkit
+from toolkits.amadeus_experience_tool import AmadeusExperienceToolkit
+from toolkits.weather_tool import WeatherTool
+from toolkits.current_datetime import DateTimeTool
+from toolkits.web_search_service import WebSearchService
+
+hotel_toolkit = AmadeusHotelToolkit()
+flight_toolkit = AmadeusFlightToolkit()
+experience_toolkit = AmadeusExperienceToolkit()
+weather_service = WeatherTool()
+datetime_service = DateTimeTool()
+web_search_service = WebSearchService()
+
+def hotel_search_tool(city: str = "Paris", checkin: str = "2025-12-01", checkout: str = "2025-12-05", adults: int = 1) -> List[HotelSuggestion]:
+    hotel_ids, hotels = hotel_toolkit.hotel_list(city)
+    if not hotel_ids or not hotels:
+        return []
+    offers = hotel_toolkit.hotel_search(hotel_ids[:3], hotels[:3], checkin, checkout, adults)
+    hotel_suggestions = []
+    for idx, offer in enumerate(offers[:3]):
+        hotel = hotels[idx] if idx < len(hotels) else {}
+        name = hotel.get("name", "Unknown Hotel")
+        rating = hotel.get("rating", 0.0)
+        address = hotel.get("address", {})
+        location = ", ".join(address.get("lines", []))
+        amenities = hotel.get("amenities", [])
+        price = offer.get("offers", [{}])[0].get("price", {}).get("total", 0.0)
+        hotel_suggestions.append(HotelSuggestion(
+            name=name,
+            price_per_night=price,
+            rating=rating,
+            location=location,
+            amenities=amenities
+        ))
+    return hotel_suggestions
+
+def flight_search_tool(origin: str = "London", destination: str = "Paris", departure_date: str = "2025-12-01", return_date: Optional[str] = None) -> List[FlightSuggestion]:
+    offers = flight_toolkit.flight_search(origin, destination, departure_date, return_date, adults=1)
+    flight_suggestions = []
+    for offer in offers[:3]:
+        price = offer.get('price', {}).get('total', 0.0)
+        airline = ', '.join(offer.get('validatingAirlineCodes', [])) if offer.get('validatingAirlineCodes') else 'Unknown Airline'
+        itineraries = offer.get('itineraries', [])
+        departure_time = ""
+        arrival_time = ""
+        duration = ""
+        stops = 0
+        if itineraries:
+            first_itin = itineraries[0]
+            duration = first_itin.get('duration', "")
+            segments = first_itin.get('segments', [])
+            if segments:
+                departure_time = segments[0].get('departure', {}).get('at', "")
+                arrival_time = segments[-1].get('arrival', {}).get('at', "")
+                stops = len(segments) - 1
+        flight_suggestions.append(FlightSuggestion(
+            airline=airline,
+            departure_time=departure_time,
+            arrival_time=arrival_time,
+            price=price,
+            duration=duration,
+            stops=stops
+        ))
+    return flight_suggestions
+
+def weather_lookup_tool(city: str = "Paris", start_date: str = "2025-12-01", end_date: str = "2025-12-05") -> Dict[str, Any]:
+    result = weather_service.get_weather_range(city, start_date, end_date)
+    forecast = result.get("forecast", [])
+    if forecast:
+        first_day = forecast[0]
+        if isinstance(first_day, dict):
+            return {
+                "date": first_day.get("date", start_date),
+                "forecast": first_day.get("description", ""),
+                "high": first_day.get("temp_max", None),
+                "low": first_day.get("temp_min", None)
+            }
+        else:
+            return {
+                "date": start_date,
+                "forecast": str(first_day),
+                "high": None,
+                "low": None
+            }
+    return {"date": start_date, "forecast": "No data", "high": None, "low": None}
+
+def datetime_tool_func() -> Dict[str, Any]:
+    result = datetime_service.get_today_date()
+    return {"current_datetime": result.get("date", "") if isinstance(result, dict) else str(result)}
+
+def local_experience_tool(city: str = "Paris") -> List[Dict[str, Any]]:
+    # Use AmadeusExperienceToolkit for real experiences if available, else fallback to web search
+    try:
+        experiences = experience_toolkit.experience_search(city, radius_km=20, max_results=5)
+        if experiences:
+            return experiences
+    except Exception:
+        pass
+    # fallback to web search
+    query = f"things to do in {city}"
+    result = web_search_service.search(query, max_results=5)
+    experiences = []
+    for r in result.get("results", []):
+        if isinstance(r, dict):
+            name = r.get("title", "Unknown Experience")
+        else:
+            name = str(r)
+        experiences.append({
+            "name": name,
+            "category": "Activity",
+            "price": 0
+        })
+    return experiences
+
+tools.py ends here
+db_utils.py start here
+import sqlite3
+import json
+import pandas as pd
+from datetime import date, datetime
+from typing import List, Optional, Dict, Any
+from pathlib import Path
+
+# Handle both relative and absolute imports
+try:
+    from api.datamodels import User, Trip, ChatHistory, TripPlanModel
+except ImportError:
+    try:
+        from api.datamodels import User, Trip, ChatHistory, TripPlanModel
+    except ImportError:
+        from api.datamodels import User, Trip, ChatHistory, TripPlanModel
+
+# Database path
+DB_PATH = Path(__file__).parent / "travel_ai.sqlite"
+
+def get_connection():
+    """Get database connection with row factory"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # return dict-like rows
+    return conn
+
+# -------------------------
+# UI Helper Functions (moved from app.py)
+# -------------------------
+
+def get_all_users() -> List[str]:
+    """Get all user names for UI dropdown"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM users ORDER BY name")
+        users = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return users
+    except Exception as e:
+        print(f"Error getting users: {e}")
+        return []
+
+def get_user_id_by_name(user_name: str) -> Optional[int]:
+    """Get user ID from name"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE name = ?", (user_name,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else None
+    except Exception as e:
+        print(f"Error getting user ID: {e}")
+        return None
+
+def get_user_name_by_id(user_id: int) -> str:
+    """Get user name from ID"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM users WHERE id = ?", (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else "Unknown"
+    except Exception as e:
+        print(f"Error getting user name: {e}")
+        return "Unknown"
+
+def get_trips_by_user_name(user_name: str) -> List[Dict]:
+    """Get all trips for a user by name"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.id, t.title, t.phase 
+            FROM trips t 
+            JOIN users u ON u.id = t.user_id 
+            WHERE u.name = ?
+            ORDER BY t.created_at DESC
+        """, (user_name,))
+        trips = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return trips
+    except Exception as e:
+        print(f"Error getting trips: {e}")
+        return []
+
+def load_table_as_dataframe(table_name: str) -> pd.DataFrame:
+    """Load table data as DataFrame for UI display"""
+    try:
+        conn = sqlite3.connect(DB_PATH)  # Use regular connection for pandas
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+        conn.close()
+        # If table has a created_at column, parse it as datetime
+        if 'created_at' in df.columns:
+            df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
+        return df
+    except Exception as e:
+        print(f"Error loading table {table_name}: {e}")
+        return pd.DataFrame()
+
+def get_recent_chat_history(limit: int = 5) -> List[Dict]:
+    """Get recent chat history for debugging"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT role, content, phase, created_at 
+            FROM chat_history 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        """, (limit,))
+        chat = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return chat
+    except Exception as e:
+        print(f"Error getting recent chat: {e}")
+        return []
+
+# -------------------------
+# User Context Helper
+# -------------------------
+def get_trip_context(user_id: int, trip_id: int, phase: str) -> dict:
+    """
+    Returns trip context for a given user, trip, and phase using the trip_summary view.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM trip_summary WHERE id=? AND user_name=(SELECT name FROM users WHERE id=?) AND phase=?",
+        (trip_id, user_id, phase)
+    )
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+# -------------------------
+# Trips
+# -------------------------
+def start_new_trip(user_id: int, request: dict) -> Trip:
+    """
+    Create a new Trip based on user input.
+    """
+    trip = Trip(user_id=user_id, **request, trip_status="draft")
+    trip_id = create_trip(trip)
+    trip.id = trip_id
+    return trip
+
+# -------------------------
+# Chat History
+# -------------------------
+def save_chat_message_service(msg: ChatHistory) -> ChatHistory:
+    """
+    Save a chat message and return it with ID.
+    """
+    cid = save_chat_message(msg)
+    msg.id = cid
+    return msg
+
+def load_chat_history_service(trip_id: int) -> List[dict]:
+    """
+    Load chat history for a trip.
+    Always return as list of dicts for UI compatibility.
+    """
+    return load_chat_history(trip_id)
+
+# --------------------------
+# Helper converters
+# --------------------------
+def _serialize_value(value):
+    """Convert Python ? SQLite compatible"""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (date, datetime)):
+        return str(value)
+    return value
+
+def _deserialize_value(value, expected_type):
+    """Convert SQLite ? Python type"""
+    if value is None:
+        return None
+    if expected_type == bool:
+        return bool(value)
+    if expected_type in (dict, list):
+        try:
+            return json.loads(value)
+        except Exception:
+            return {}
+    if expected_type == date:
+        return datetime.fromisoformat(value).date()
+    if expected_type == datetime:
+        return datetime.fromisoformat(value)
+    return value
+
+# --------------------------
+# USERS
+# --------------------------
+def create_user(user: User) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO users (name, email, profile, travel_preferences, travel_constraints)
+        VALUES (?, ?, ?, ?, ?)
+    """, (user.name, user.email, user.profile, user.travel_preferences, user.travel_constraints))
+    conn.commit()
+    uid = cur.lastrowid
+    conn.close()
+    return int(uid) if uid is not None else 0
+
+def get_user_by_id(user_id: int) -> Optional[User]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE id=?", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return User(**dict(row))
+    return None
+
+# --------------------------
+# TRIPS
+# --------------------------
+def create_trip(trip: Trip) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO trips (user_id, phase, title, origin, destination, trip_startdate, trip_enddate,
+                           accommodation_type, no_of_adults, no_of_children, budget, currency, trip_status,
+                           purpose, travel_preferences, travel_constraints)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        trip.user_id,
+        trip.phase,
+        trip.title,
+        trip.origin,
+        trip.destination,
+        _serialize_value(trip.trip_startdate),
+        _serialize_value(trip.trip_enddate),
+        trip.accommodation_type,
+        trip.no_of_adults,
+        trip.no_of_children,
+        trip.budget,
+        trip.currency,
+        trip.trip_status,
+        trip.purpose,
+        trip.travel_preferences,
+        trip.travel_constraints
+    ))
+    conn.commit()
+    tid = cur.lastrowid
+    conn.close()
+    return int(tid) if tid is not None else 0
+
+def get_trip_by_id(trip_id: int) -> Optional[Trip]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM trips WHERE id=?", (trip_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return Trip(**dict(row))
+    return None
+
+def update_trip_status(trip_id: int, trip_status: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE trips SET trip_status=? WHERE id=?", (trip_status, trip_id))
+    conn.commit()
+    conn.close()
+
+# --------------------------
+# CHAT HISTORY
+# --------------------------
+def save_chat_message(msg: ChatHistory) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO chat_history (trip_id, user_id, role, phase, content, metadata, sequence_number, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        msg.trip_id,
+        msg.user_id,
+        msg.role,
+        msg.phase,
+        msg.content,
+        msg.metadata,
+        msg.sequence_number,
+        _serialize_value(msg.created_at)
+    ))
+    conn.commit()
+    cid = cur.lastrowid
+    conn.close()
+    return int(cid) if cid is not None else 0
+
+def load_chat_history(trip_id: int) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT role, content FROM chat_history WHERE trip_id=? ORDER BY created_at", (trip_id,))
+    rows = cur.fetchall()
+    conn.close()
+    # Always return as dicts for UI compatibility
+    return [{"role": r[0], "content": r[1]} for r in rows]
+
+# --------------------------
+# TRIP PLANS
+# --------------------------
+def create_trip_plan(trip_plan: TripPlanModel) -> int:
+    """Create a new trip plan in the database"""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO trip_plans (trip_id, itinerary_json, hotels_json, flights_json, daily_budget, total_estimated_cost, status, version, agent_metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        trip_plan.trip_id,
+        trip_plan.itinerary_json,
+        trip_plan.hotels_json,
+        trip_plan.flights_json,
+        trip_plan.daily_budget,
+        trip_plan.total_estimated_cost,
+        trip_plan.status,
+        trip_plan.version,
+        trip_plan.agent_metadata
+    ))
+    conn.commit()
+    plan_id = cur.lastrowid
+    conn.close()
+    return int(plan_id) if plan_id is not None else 0
+
+def get_trip_plan_by_trip_id(trip_id: int, version: Optional[int] = None) -> Optional[TripPlanModel]:
+    """Get trip plan by trip ID. If version not specified, gets latest version."""
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    if version is not None:
+        cur.execute("SELECT * FROM trip_plans WHERE trip_id=? AND version=?", (trip_id, version))
+    else:
+        cur.execute("""
+            SELECT * FROM trip_plans 
+            WHERE trip_id=? 
+            ORDER BY version DESC 
+            LIMIT 1
+        """, (trip_id,))
+    
+    row = cur.fetchone()
+    conn.close()
+    
+    if row:
+        return TripPlanModel(**dict(row))
+    return None
+
+def get_all_trip_plan_versions(trip_id: int) -> List[TripPlanModel]:
+    """Get all versions of trip plans for a trip"""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT * FROM trip_plans 
+        WHERE trip_id=? 
+        ORDER BY version DESC
+    """, (trip_id,))
+    rows = cur.fetchall()
+    conn.close()
+    
+    return [TripPlanModel(**dict(row)) for row in rows]
+
+def update_trip_plan_status(plan_id: int, status: str) -> bool:
+    """Update trip plan status (draft, approved, rejected)"""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE trip_plans SET status=? WHERE id=?", (status, plan_id))
+        conn.commit()
+        updated = cur.rowcount > 0
+        conn.close()
+        return updated
+    except Exception as e:
+        print(f"Error updating trip plan status: {e}")
+        return False
+
+def delete_trip_plan(plan_id: int) -> bool:
+    """Delete a trip plan"""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM trip_plans WHERE id=?", (plan_id,))
+        conn.commit()
+        deleted = cur.rowcount > 0
+        conn.close()
+        return deleted
+    except Exception as e:
+        print(f"Error deleting trip plan: {e}")
+        return False
+
+def save_travel_plan_to_db(travel_plan, trip_id: int, version: int = 1) -> int:
+    """Helper function to save TravelPlan object to database"""
+    trip_plan_model = TripPlanModel.from_travel_plan(travel_plan, trip_id, version)
+    return create_trip_plan(trip_plan_model)
+
+def get_trip_with_plan(trip_id: int) -> Optional[Dict]:
+    """Get trip with its latest plan for UI display"""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                t.*,
+                tp.itinerary_json,
+                tp.hotels_json,
+                tp.flights_json,
+                tp.daily_budget as plan_daily_budget,
+                tp.total_estimated_cost,
+                tp.status as plan_status,
+                tp.generated_at as plan_generated_at,
+                tp.version as plan_version
+            FROM trips t
+            LEFT JOIN trip_plans tp ON t.id = tp.trip_id 
+                AND tp.version = (SELECT MAX(version) FROM trip_plans WHERE trip_id = t.id)
+            WHERE t.id = ?
+        """, (trip_id,))
+        row = cur.fetchone()
+        conn.close()
+        
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"Error getting trip with plan: {e}")
+        return None
+db_utils.py ends here
+schema.sql
+-- TravelMate AI - Complete Database Schema
+-- Production-ready schema for 4-phase travel AI system
+
+-- USERS TABLE
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL CHECK(email LIKE '%_@_%._%'),
+    profile TEXT DEFAULT NULL,
+    travel_preferences TEXT DEFAULT NULL,
+    travel_constraints TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- TRIPS TABLE  
+CREATE TABLE trips (
+    -- System identifiers
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    
+    -- Mandatory trip definition
+    phase TEXT NOT NULL CHECK(phase IN ('phase1_langflow', 'phase2_crewai', 'phase3_autogen', 'phase4_langgraph')),
+    title TEXT NOT NULL DEFAULT 'My Trip',
+    origin TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    trip_startdate DATE NOT NULL,
+    trip_enddate DATE NOT NULL,
+    accommodation_type TEXT NOT NULL CHECK(accommodation_type IN ('hotel', 'resort', 'hostel', 'apartment', 'guesthouse', 'luxury', 'own_place', 'friend_place', 'official_accommodation', 'budget', 'family-friendly', 'business', 'youth hostel')),
+    no_of_adults INTEGER NOT NULL DEFAULT 1,
+    no_of_children INTEGER NOT NULL DEFAULT 0,
+    
+    -- Mandatory with defaults
+    budget REAL NOT NULL DEFAULT 500,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    trip_status TEXT NOT NULL DEFAULT 'draft' CHECK(trip_status IN ('draft', 'confirmed', 'in_progress', 'completed', 'cancelled')),
+    
+    -- Optional fields with defaults
+    purpose TEXT DEFAULT 'none',
+    travel_preferences TEXT DEFAULT 'none',
+    travel_constraints TEXT DEFAULT 'none',
+    
+    -- System metadata
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Constraints
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    CHECK(no_of_adults >= 1),
+    CHECK(no_of_children >= 0),
+    CHECK(budget >= 0),
+    CHECK(trip_enddate > trip_startdate),
+    CHECK(julianday(trip_enddate) - julianday(trip_startdate) >= 1)
+);
+
+-- TRIP PLANS TABLE (stores AI-generated trip plan results)
+CREATE TABLE trip_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL,
+    itinerary_json TEXT, -- Itinerary data as JSON
+    hotels_json TEXT,    -- Hotel suggestions as JSON  
+    flights_json TEXT,   -- Flight suggestions as JSON
+    daily_budget REAL DEFAULT 0.0,
+    total_estimated_cost REAL DEFAULT 0.0,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'approved', 'rejected')),
+    version INTEGER DEFAULT 1, -- Allow multiple plan versions
+    agent_metadata TEXT, -- JSON for agent-specific data
+    
+    -- Foreign key constraint
+    FOREIGN KEY(trip_id) REFERENCES trips(id) ON DELETE CASCADE
+);
+
+-- CHAT HISTORY TABLE
+CREATE TABLE chat_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER, -- Allow NULL for pre-trip conversations
+    user_id INTEGER NOT NULL, -- Track conversations even without trips
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+    phase TEXT CHECK(phase IN ('phase1_langflow', 'phase2_crewai', 'phase3_autogen', 'phase4_langgraph')),
+    content TEXT NOT NULL,
+    metadata TEXT, -- JSON for additional data
+    sequence_number INTEGER, -- Order within conversation
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Foreign keys
+    FOREIGN KEY(trip_id) REFERENCES trips(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- PERFORMANCE INDEXES
+CREATE INDEX idx_trips_user_status ON trips(user_id, trip_status, created_at);
+CREATE INDEX idx_trips_phase ON trips(phase, created_at);
+CREATE INDEX idx_trips_dates ON trips(trip_startdate, trip_enddate);
+CREATE INDEX idx_trip_plans_trip_id ON trip_plans(trip_id, version DESC);
+CREATE INDEX idx_trip_plans_status ON trip_plans(status, generated_at);
+CREATE INDEX idx_chat_trip_sequence ON chat_history(trip_id, sequence_number);
+
+-- TRIGGERS FOR AUTO-UPDATE
+CREATE TRIGGER update_trips_timestamp 
+    AFTER UPDATE ON trips
+    BEGIN
+        UPDATE trips SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+
+CREATE TRIGGER update_trip_plans_timestamp 
+    AFTER UPDATE ON trip_plans
+    BEGIN
+        UPDATE trip_plans SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+
+
+-- VIEWS FOR COMMON QUERIES
+CREATE VIEW active_trips AS
+SELECT 
+    t.*,
+    u.name as user_name,
+    u.email as user_email,
+    (julianday(t.trip_enddate) - julianday(t.trip_startdate) + 1) as duration_days
+FROM trips t
+JOIN users u ON t.user_id = u.id
+WHERE t.trip_status IN ('draft', 'confirmed', 'in_progress');
+
+CREATE VIEW trip_summary AS
+SELECT 
+    t.id,
+    t.title,
+    t.phase,
+    u.name as user_name,
+    t.origin || ' ? ' || t.destination as route,
+    t.trip_startdate,
+    t.trip_enddate,
+    t.no_of_adults + t.no_of_children as total_travelers,
+    t.budget || ' ' || t.currency as budget_display,
+    t.trip_status,
+    COUNT(ch.id) as message_count,
+    tp.status as plan_status,
+    tp.total_estimated_cost
+FROM trips t
+JOIN users u ON t.user_id = u.id
+LEFT JOIN chat_history ch ON t.id = ch.trip_id
+LEFT JOIN trip_plans tp ON t.id = tp.trip_id AND tp.version = (
+    SELECT MAX(version) FROM trip_plans WHERE trip_id = t.id
+)
+GROUP BY t.id;
+
+CREATE VIEW trip_plans_with_details AS
+SELECT 
+    tp.*,
+    t.title as trip_title,
+    t.origin,
+    t.destination,
+    t.trip_startdate,
+    t.trip_enddate,
+    u.name as user_name
+FROM trip_plans tp
+JOIN trips t ON tp.trip_id = t.id
+JOIN users u ON t.user_id = u.id;
+
+-- ADMIN QUERIES FOR MONITORING
+-- SELECT * FROM trip_summary WHERE trip_status = 'draft';
+-- SELECT phase, COUNT(*) FROM trips GROUP BY phase;
