@@ -1,11 +1,12 @@
 """
 Phase 2: CrewAI Agents — Tool wrappers + Agent factories
+Aligned with datamodels.py (TripRequirements, TravelPlan, OptimizationResult)
 """
 
 from crewai import Agent
 from crewai.tools import BaseTool
 from langchain_openai import ChatOpenAI
-from typing import Dict, Any, Optional, Type
+from typing import Optional, Type
 from pydantic import BaseModel, Field
 import json
 import os
@@ -21,10 +22,9 @@ from api.datamodels import TripRequirements, TravelPlan, OptimizationResult
 
 
 # ═══════════════════════════════════════════════════════════
-#  LLM HELPER
+#  LLM
 # ═══════════════════════════════════════════════════════════
 def _get_llm():
-    """Return the shared ChatOpenAI instance for all agents."""
     return ChatOpenAI(
         model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         temperature=0.3,
@@ -32,43 +32,33 @@ def _get_llm():
 
 
 # ═══════════════════════════════════════════════════════════
-#  TOOL INPUT SCHEMAS (Pydantic)
+#  TOOL INPUT SCHEMAS
 # ═══════════════════════════════════════════════════════════
-class WebSearchInput(BaseModel):
+class SearchInput(BaseModel):
     query: str = Field(description="Search query string")
 
-
-class WeatherInput(BaseModel):
-    city: str = Field(description="City name (e.g. 'Paris')")
+class WeatherRangeInput(BaseModel):
+    city: str = Field(description="City name")
     start_date: str = Field(description="Start date YYYY-MM-DD")
     end_date: str = Field(description="End date YYYY-MM-DD")
 
-
-class WeatherSimpleInput(BaseModel):
-    city: str = Field(description="City name")
-    days: int = Field(default=3, description="Number of forecast days (1-16)")
-
-
-class HotelSearchInput(BaseModel):
+class HotelInput(BaseModel):
     city: str = Field(description="City name")
     check_in: str = Field(description="Check-in date YYYY-MM-DD")
     check_out: str = Field(description="Check-out date YYYY-MM-DD")
     adults: int = Field(default=1, description="Number of adults")
 
-
-class FlightSearchInput(BaseModel):
+class FlightInput(BaseModel):
     origin: str = Field(description="Origin city name")
     destination: str = Field(description="Destination city name")
     departure_date: str = Field(description="Departure date YYYY-MM-DD")
-    return_date: Optional[str] = Field(default=None, description="Return date YYYY-MM-DD (optional)")
+    return_date: Optional[str] = Field(default=None, description="Return date YYYY-MM-DD")
     adults: int = Field(default=1, description="Number of adults")
 
-
-class ExperienceSearchInput(BaseModel):
+class ExperienceInput(BaseModel):
     city: str = Field(description="City name")
-    radius_km: int = Field(default=20, description="Search radius in km")
+    radius_km: int = Field(default=20, description="Search radius km")
     max_results: int = Field(default=10, description="Max results")
-
 
 class DateTimeInput(BaseModel):
     timezone: Optional[str] = Field(default=None, description="Timezone e.g. 'UTC'")
@@ -78,242 +68,188 @@ class DateTimeInput(BaseModel):
 #  CREWAI TOOL WRAPPERS
 # ═══════════════════════════════════════════════════════════
 class SearchWebTool(BaseTool):
+    """🔄 FALLBACK TOOL — use whenever any other tool fails or returns empty."""
     name: str = "search_web"
     description: str = (
         "Search the web for travel info, visa requirements, local tips, "
-        "safety advisories, cultural events, etc. "
+        "safety advisories, deals, prices, alternatives. "
+        "USE THIS AS FALLBACK when any other tool fails or returns no results. "
         "Input: a search query string."
     )
-    args_schema: Type[BaseModel] = WebSearchInput
+    args_schema: Type[BaseModel] = SearchInput
 
     def _run(self, query: str) -> str:
         try:
-            service = WebSearchService()
-            result = service.search(query, max_results=5)
+            svc = WebSearchService()
+            result = svc.search(query, max_results=5)
             if "error" in result:
                 return f"Search error: {result['error']}"
-            # Compact results for LLM context
-            summaries = []
+            lines = []
             for r in result.get("results", []):
-                summaries.append(
-                    f"• {r['title']}\n  {r['content'][:300]}\n  URL: {r['url']}"
-                )
-            return f"Web search results for '{query}':\n\n" + "\n\n".join(summaries)
+                lines.append(f"• {r['title']}\n  {r['content'][:250]}\n  {r['url']}")
+            return f"Results for '{query}':\n\n" + "\n\n".join(lines) if lines else "No results found."
         except Exception as e:
-            return f"Web search failed: {str(e)}"
+            return f"Web search failed: {e}"
 
 
 class GetWeatherTool(BaseTool):
-    name: str = "get_weather_range"
+    name: str = "get_weather"
     description: str = (
-        "Get weather forecast for a city over a date range. "
-        "Provide city name, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD)."
+        "Get weather forecast for a city and date range. "
+        "Provide city, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD). "
+        "If this fails, use search_web as fallback."
     )
-    args_schema: Type[BaseModel] = WeatherInput
+    args_schema: Type[BaseModel] = WeatherRangeInput
 
     def _run(self, city: str, start_date: str, end_date: str) -> str:
         try:
-            tool = WeatherTool()
-            result = tool.get_weather_range(city, start_date, end_date)
+            wt = WeatherTool()
+            result = wt.get_weather_range(city, start_date, end_date)
             if "error" in result:
-                # Fall back to simple forecast
-                simple = tool.get_weather(city, days=7)
+                simple = wt.get_weather(city, days=7)
                 if "error" in simple:
-                    return f"Weather error: {simple['error']}"
+                    return f"Weather unavailable: {simple['error']}. Use search_web as fallback."
                 result = simple
             loc = result.get("location", {})
-            header = f"Weather for {loc.get('name', city)}, {loc.get('country', '')}:\n"
-            lines = []
-            for day in result.get("forecast", []):
-                lines.append(
-                    f"  {day['date']}: {day['temp_min']}°C – {day['temp_max']}°C, "
-                    f"precip: {day['precipitation']}mm"
-                )
-            return header + "\n".join(lines)
+            lines = [f"Weather for {loc.get('name', city)}, {loc.get('country', '')}:"]
+            for d in result.get("forecast", []):
+                lines.append(f"  {d['date']}: {d['temp_min']}°C–{d['temp_max']}°C, rain: {d['precipitation']}mm")
+            return "\n".join(lines)
         except Exception as e:
-            return f"Weather lookup failed: {str(e)}"
+            return f"Weather failed: {e}. Use search_web as fallback."
 
 
 class SearchHotelsTool(BaseTool):
     name: str = "search_hotels"
     description: str = (
-        "Search for hotels in a city with check-in/out dates. "
-        "Returns hotel names, prices, ratings, and amenities. "
-        "Provide city, check_in (YYYY-MM-DD), check_out (YYYY-MM-DD), adults."
+        "Search for hotels in a city with check-in/out dates using Amadeus API. "
+        "Returns hotel names, prices, amenities. "
+        "If this fails or returns empty, use search_web as fallback."
     )
-    args_schema: Type[BaseModel] = HotelSearchInput
+    args_schema: Type[BaseModel] = HotelInput
 
     def _run(self, city: str, check_in: str, check_out: str, adults: int = 1) -> str:
         try:
-            toolkit = AmadeusHotelToolkit()
-            hotel_ids, hotels = toolkit.hotel_list(city, radius=10)
-            if not hotel_ids:
-                return f"No hotels found in {city}."
-
-            # Limit to top 8 to avoid API limits
-            hotel_ids = hotel_ids[:8]
-            hotels = hotels[:8]
-
-            offers = toolkit.hotel_search(hotel_ids, hotels, check_in, check_out, adults)
-
+            tk = AmadeusHotelToolkit()
+            ids, hotels = tk.hotel_list(city, radius=10)
+            if not ids:
+                return f"No hotels found in {city} via Amadeus. Use search_web as fallback."
+            ids, hotels = ids[:8], hotels[:8]
+            offers = tk.hotel_search(ids, hotels, check_in, check_out, adults)
             if not offers:
-                # Return basic hotel list without offers
-                lines = [f"Hotels found in {city} (no live pricing available):"]
-                for h in hotels:
-                    lines.append(
-                        f"• {h.get('name', 'Unknown')} "
-                        f"(ID: {h.get('hotelId', 'N/A')}, "
-                        f"Dist: {h.get('distance', {}).get('value', '?')} "
-                        f"{h.get('distance', {}).get('unit', '')})"
-                    )
+                lines = [f"Hotels in {city} (no live pricing):"]
+                for h in hotels[:5]:
+                    lines.append(f"• {h.get('name','?')} — {h.get('distance',{}).get('value','?')} {h.get('distance',{}).get('unit','')}")
                 return "\n".join(lines)
-
-            # Format offers compactly
-            lines = [f"Hotel offers in {city} ({check_in} to {check_out}):"]
-            for offer_data in offers[:6]:
-                hotel_info = offer_data.get("hotel", {})
-                name = hotel_info.get("name", "Unknown Hotel")
-                for off in offer_data.get("offers", []):
-                    price = off.get("price", {})
-                    room = off.get("room", {})
-                    room_desc = room.get("description", {}).get("text", "N/A")
-                    lines.append(
-                        f"• {name}: ${price.get('total', '?')} {price.get('currency', 'USD')} "
-                        f"| Room: {room_desc[:80]} "
-                        f"| Check-in: {off.get('checkInDate', check_in)} "
-                        f"| Check-out: {off.get('checkOutDate', check_out)}"
-                    )
+            lines = [f"Hotels in {city} ({check_in} to {check_out}):"]
+            for od in offers[:6]:
+                nm = od.get("hotel", {}).get("name", "Unknown")
+                for off in od.get("offers", []):
+                    p = off.get("price", {})
+                    rm = off.get("room", {}).get("description", {}).get("text", "N/A")
+                    lines.append(f"• {nm}: ${p.get('total','?')} {p.get('currency','USD')} | {rm[:80]}")
             return "\n".join(lines)
         except Exception as e:
-            return f"Hotel search failed: {str(e)}"
+            return f"Hotel search failed: {e}. Use search_web as fallback."
 
 
 class SearchFlightsTool(BaseTool):
     name: str = "search_flights"
     description: str = (
-        "Search for flights between two cities. "
-        "Returns airlines, prices, duration, and stops. "
-        "Provide origin, destination, departure_date (YYYY-MM-DD), "
-        "optional return_date, adults."
+        "Search for flights between two cities using Amadeus API. "
+        "Returns airlines, prices, duration, stops. "
+        "If this fails or returns empty, use search_web as fallback."
     )
-    args_schema: Type[BaseModel] = FlightSearchInput
+    args_schema: Type[BaseModel] = FlightInput
 
     def _run(self, origin: str, destination: str, departure_date: str,
              return_date: Optional[str] = None, adults: int = 1) -> str:
         try:
-            toolkit = AmadeusFlightToolkit()
-            offers = toolkit.flight_search(
-                origin, destination, departure_date,
-                return_date=return_date, adults=adults
-            )
+            tk = AmadeusFlightToolkit()
+            offers = tk.flight_search(origin, destination, departure_date,
+                                      return_date=return_date, adults=adults)
             if not offers:
-                return f"No flights found from {origin} to {destination} on {departure_date}."
-
-            lines = [f"Flights from {origin} to {destination} on {departure_date}:"]
+                return f"No flights {origin}→{destination} on {departure_date}. Use search_web as fallback."
+            lines = [f"Flights {origin}→{destination} on {departure_date}:"]
             for offer in offers[:4]:
                 price = offer.get("price", {})
                 airlines = ", ".join(offer.get("validatingAirlineCodes", []))
                 for itin in offer.get("itineraries", []):
-                    duration = itin.get("duration", "N/A")
-                    segments = itin.get("segments", [])
-                    stops = len(segments) - 1
-                    dep = segments[0].get("departure", {}) if segments else {}
-                    arr = segments[-1].get("arrival", {}) if segments else {}
+                    segs = itin.get("segments", [])
+                    dep = segs[0].get("departure", {}) if segs else {}
+                    arr = segs[-1].get("arrival", {}) if segs else {}
                     lines.append(
-                        f"• ${price.get('total', '?')} {price.get('currency', 'USD')} "
-                        f"| {airlines} | {duration} | {stops} stop(s) "
-                        f"| {dep.get('iataCode', '?')} {dep.get('at', '?')[:16]} "
-                        f"→ {arr.get('iataCode', '?')} {arr.get('at', '?')[:16]}"
+                        f"• ${price.get('total','?')} {price.get('currency','USD')} | {airlines} "
+                        f"| {itin.get('duration','?')} | {len(segs)-1} stop(s) "
+                        f"| {dep.get('iataCode','?')} {dep.get('at','?')[:16]} → "
+                        f"{arr.get('iataCode','?')} {arr.get('at','?')[:16]}"
                     )
             return "\n".join(lines)
         except Exception as e:
-            return f"Flight search failed: {str(e)}"
+            return f"Flight search failed: {e}. Use search_web as fallback."
 
 
 class SearchExperiencesTool(BaseTool):
     name: str = "search_experiences"
     description: str = (
-        "Search for tours, activities, and experiences in a city. "
-        "Returns activity names, prices, ratings, and descriptions. "
-        "Provide city name, optional radius_km and max_results."
+        "Search for tours, activities in a city using Amadeus API. "
+        "If this fails, use search_web as fallback."
     )
-    args_schema: Type[BaseModel] = ExperienceSearchInput
+    args_schema: Type[BaseModel] = ExperienceInput
 
     def _run(self, city: str, radius_km: int = 20, max_results: int = 10) -> str:
         try:
-            toolkit = AmadeusExperienceToolkit()
-            activities = toolkit.experience_search(city, radius_km=radius_km, max_results=max_results)
-            if not activities:
-                return f"No experiences/activities found in {city}."
-
-            lines = [f"Experiences & activities in {city}:"]
-            for act in activities:
-                price = act.get("price", {})
+            tk = AmadeusExperienceToolkit()
+            acts = tk.experience_search(city, radius_km=radius_km, max_results=max_results)
+            if not acts:
+                return f"No experiences in {city} via Amadeus. Use search_web as fallback."
+            lines = [f"Experiences in {city}:"]
+            for a in acts:
+                p = a.get("price", {})
                 lines.append(
-                    f"• {act.get('name', 'Unknown')} "
-                    f"| ${price.get('amount', '?')} {price.get('currencyCode', 'USD')} "
-                    f"| Rating: {act.get('rating', 'N/A')} "
-                    f"| {(act.get('shortDescription', '') or '')[:120]}"
+                    f"• {a.get('name','?')} | ${p.get('amount','?')} {p.get('currencyCode','USD')} "
+                    f"| Rating: {a.get('rating','N/A')} | {(a.get('shortDescription','') or '')[:100]}"
                 )
             return "\n".join(lines)
         except Exception as e:
-            return f"Experience search failed: {str(e)}"
+            return f"Experience search failed: {e}. Use search_web as fallback."
 
 
 class GetCurrentDateTool(BaseTool):
     name: str = "get_current_date"
-    description: str = (
-        "Get today's current date and time. Use this to determine "
-        "relative dates like 'next week' or 'in 3 days'. "
-        "Optional timezone parameter."
-    )
+    description: str = "Get today's date. Use to resolve relative dates like 'next week'."
     args_schema: Type[BaseModel] = DateTimeInput
 
     def _run(self, timezone: Optional[str] = None) -> str:
         try:
-            dt_tool = DateTimeTool()
-            result = dt_tool.get_current_datetime(timezone=timezone)
+            dt = DateTimeTool()
+            result = dt.get_current_datetime(timezone=timezone)
             if "error" in result:
-                return f"DateTime error: {result['error']}"
-            return (
-                f"Current date: {result['date']}\n"
-                f"Current time: {result['time']}\n"
-                f"Timezone: {result['timezone']}"
-            )
+                return f"Error: {result['error']}"
+            return f"Today's date: {result['date']} | Time: {result['time']} | TZ: {result['timezone']}"
         except Exception as e:
-            return f"DateTime failed: {str(e)}"
+            return f"DateTime failed: {e}"
 
 
 # ═══════════════════════════════════════════════════════════
 #  AGENT FACTORIES
 # ═══════════════════════════════════════════════════════════
 def info_collector() -> Agent:
-    """
-    Agent that extracts structured trip requirements from user input.
-    Uses web search + current date to validate and enrich info.
-    Returns TripRequirements as JSON.
-    """
+    """InfoCollector — extracts TripRequirements from user input."""
     return Agent(
-        role="Trip Requirements Analyst",
+        role="Travel Requirements Specialist",
         goal=(
-            "Extract complete, structured trip requirements from the user's "
-            "natural language request. Identify destination, origin, dates, "
-            "budget, number of travelers, preferences (hotel star rating, "
-            "activities, dietary needs), and any special requirements. "
-            "If critical info is missing (destination or dates), clearly "
-            "list what's needed. Use today's date to resolve relative dates "
-            "like 'next weekend' or 'in 2 weeks'."
+            "Extract and validate complete travel requirements from user requests. "
+            "Resolve relative dates using get_current_date. "
+            "If critical info is missing, set mode='missing' with missing_fields list. "
+            "Output must be a valid TripRequirements JSON."
         ),
         backstory=(
-            "You are an expert travel consultant who has helped thousands "
-            "of clients clarify their travel needs. You're meticulous about "
-            "details — you never assume, you always confirm. You know that "
-            "a great trip starts with great requirements gathering."
+            "You are an experienced travel consultant who specializes in "
+            "understanding customer needs and gathering comprehensive travel "
+            "requirements. You always validate destinations and dates."
         ),
-        tools=[
-            SearchWebTool(),
-            GetCurrentDateTool(),
-        ],
+        tools=[SearchWebTool(), GetCurrentDateTool()],
         llm=_get_llm(),
         verbose=True,
         allow_delegation=False,
@@ -321,27 +257,20 @@ def info_collector() -> Agent:
 
 
 def planner() -> Agent:
-    """
-    Agent that creates a detailed travel plan using real API data.
-    Searches flights, hotels, weather, and experiences.
-    Returns TravelPlan as JSON.
-    """
+    """Planner — creates TravelPlan with real API data."""
     return Agent(
-        role="Travel Planner",
+        role="Travel Itinerary Specialist",
         goal=(
-            "Create a comprehensive, day-by-day travel plan with REAL data. "
-            "Search for actual flights with prices, real hotel options with "
-            "rates, check the weather forecast, and find local experiences. "
-            "Produce a complete itinerary with specific recommendations, "
-            "booking references, and a cost breakdown."
+            "Create comprehensive travel itineraries with REAL flights, hotels, "
+            "and activities from the tools. Always try the specialized tools first. "
+            "If ANY tool fails or returns no results, IMMEDIATELY use search_web "
+            "as fallback. Never return empty sections. "
+            "Output must match TravelPlan JSON format."
         ),
         backstory=(
-            "You are a world-class travel planner with 20 years of experience "
-            "crafting unforgettable trips. You have access to live flight, "
-            "hotel, and activity databases. You always provide multiple "
-            "options at different price points and consider weather, travel "
-            "time between locations, and local events. You create practical, "
-            "realistic itineraries — not fantasy trips."
+            "You are a skilled travel planner with extensive knowledge of "
+            "destinations worldwide and access to the best travel booking systems. "
+            "You always provide practical, realistic itineraries with real pricing."
         ),
         tools=[
             SearchFlightsTool(),
@@ -358,34 +287,22 @@ def planner() -> Agent:
 
 
 def optimizer() -> Agent:
-    """
-    Agent that optimizes a travel plan for cost, value, and logistics.
-    Returns OptimizationResult as JSON.
-    """
+    """Optimizer — optimizes plan for cost/value, outputs OptimizationResult."""
     return Agent(
-        role="Travel Plan Optimizer",
+        role="Travel Cost Optimizer",
         goal=(
-            "Review and optimize the travel plan for best value. "
-            "Identify cost savings (cheaper flights at nearby times, "
-            "better-value hotels, bundle deals). Check for logistics "
-            "issues (tight connections, long transfers, overbooking). "
-            "Suggest alternatives that save money without sacrificing "
-            "experience quality. Provide a final optimized plan with "
-            "total cost comparison (original vs optimized)."
+            "Optimize travel plans for cost, timing, and satisfaction. "
+            "Use search_web extensively to find cheaper alternatives and deals. "
+            "Provide specific recommendations with estimated savings. "
+            "Rearrange itinerary for feasibility, clustering, and weather. "
+            "Output must match OptimizationResult JSON format."
         ),
         backstory=(
-            "You are a travel optimization expert and former airline "
-            "revenue analyst. You know every trick to get the best "
-            "value: flexible date savings, loyalty programs, off-peak "
-            "timing, package deals, and hidden-city ticketing. You "
-            "balance cost savings with traveler comfort and experience "
-            "quality. You always explain WHY each optimization helps."
+            "You are a financial analyst specializing in travel cost optimization "
+            "and finding the best value propositions for customers. You know every "
+            "trick to save money without sacrificing experience quality."
         ),
-        tools=[
-            SearchFlightsTool(),
-            SearchHotelsTool(),
-            SearchWebTool(),
-        ],
+        tools=[SearchWebTool()],
         llm=_get_llm(),
         verbose=True,
         allow_delegation=False,
